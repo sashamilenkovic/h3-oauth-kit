@@ -40,7 +40,7 @@ pnpm add @sasha-milenkovic/h3-oauth-kit
 
 ## API Overview
 
-### 1. Register your OAuth provider
+### `registerOAuthProvider(provider, confg)`
 
 ```ts
 import { registerOAuthProvider } from "@sasha-milenkovic/h3-oauth-kit";
