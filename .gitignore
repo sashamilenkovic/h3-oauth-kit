@@ -1,0 +1,31 @@
+# Node & build artifacts
+node_modules/
+dist/
+.nitro/
+.playground/
+.temp/
+.cache/
+
+# TypeScript
+*.tsbuildinfo
+
+# Nuxt
+.nuxt/
+.output/
+
+# Local env files
+.env
+.env.*.local
+
+# Editor junk
+.DS_Store
+.idea/
+.vscode/
+
+# Testing
+coverage/
+*.log
+*.local
+
+# MacOS and system files
+Thumbs.db
