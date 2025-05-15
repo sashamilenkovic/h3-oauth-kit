@@ -1,4 +1,4 @@
-import type { OAuthProviderTokenMap, OAuthProvider } from "./types";
+import type { OAuthProviderTokenMap, OAuthProvider } from "./src/types";
 
 declare module "h3" {
   interface H3EventContext {

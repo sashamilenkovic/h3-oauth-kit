@@ -43,6 +43,7 @@ describe("deepEqual", () => {
   });
 
   it("returns false if types don't match", () => {
+    // @ts-expect-error - we want to test the type guard
     expect(deepEqual(123, "123")).toBe(false);
     expect(deepEqual([], {})).toBe(false);
     expect(deepEqual({}, null)).toBe(false);

@@ -1,6 +1,9 @@
 import { describe, it, expect } from "vitest";
 import { normalizeRefreshedToken } from "../../src/utils";
-import type { OAuthProviderTokenMap, RefreshTokenResponse } from "../../types";
+import type {
+  OAuthProviderTokenMap,
+  RefreshTokenResponse,
+} from "../../src/types";
 
 describe("normalizeRefreshedToken", () => {
   it("preserves ext_expires_in for azure", () => {

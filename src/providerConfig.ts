@@ -1,4 +1,4 @@
-import type { OAuthProvider, ProviderConfig } from "../types";
+import type { OAuthProvider, ProviderConfig } from "./types";
 
 export const providerConfig: {
   [P in OAuthProvider]: ProviderConfig<P>;

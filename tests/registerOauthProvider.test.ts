@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { registerOAuthProvider } from "../src";
 import { getOAuthProviderConfig } from "../src/index";
-import type { OAuthProviderConfigMap } from "../types";
+import type { OAuthProviderConfigMap } from "../src/types";
 
 describe("registerOAuthProvider", () => {
   beforeEach(() => {

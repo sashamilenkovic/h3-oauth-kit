@@ -12,7 +12,7 @@ import type {
   CookieOptionsOverride,
   OAuthParsedState,
   OAuthCallbackQuery,
-} from "../types";
+} from "./types";
 
 import { defineEventHandler, createError, sendRedirect, getQuery } from "h3";
 import {
@@ -383,3 +383,5 @@ export function defineProtectedRoute<Providers extends OAuthProvider[]>(
     return handler(event as H3Event & { context: AugmentedContext<Providers> });
   });
 }
+
+export * from "./types";

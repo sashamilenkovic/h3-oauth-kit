@@ -1,4 +1,4 @@
-import type { OAuthProvider } from "../../types";
+import type { OAuthProvider } from "../../src/types";
 import type { Mock } from "vitest";
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";

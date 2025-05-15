@@ -1,7 +1,7 @@
 import type {
   OAuthProviderTokenMap,
   OAuthProviderConfigMap,
-} from "../../types";
+} from "../../src/types";
 import type { Mock } from "vitest";
 
 import { describe, it, expect, vi } from "vitest";

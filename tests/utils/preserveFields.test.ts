@@ -1,4 +1,4 @@
-import type { OAuthProviderTokenMap } from "../../types";
+import type { OAuthProviderTokenMap } from "../../src/types";
 import { describe, it, expect } from "vitest";
 import { preserveFields } from "../../src/utils";
 

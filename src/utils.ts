@@ -13,7 +13,7 @@ import type {
   BaseOAuthCallbackQuery,
   ProviderFieldValue,
   TokenField,
-} from "../types";
+} from "./types";
 
 import { setCookie, getCookie, deleteCookie, getQuery, createError } from "h3";
 import { providerConfig } from "./providerConfig";
