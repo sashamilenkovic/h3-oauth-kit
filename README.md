@@ -208,4 +208,4 @@ This makes integration seamless and safe across complex authentication workflows
 
 ## Author
 
-Made with ❤️ by [@sasha-milenkovic](https://github.com/sasha-milenkovic)
+Made with ❤️ by [@sasha-milenkovic](https://github.com/sashamilenkovic)
