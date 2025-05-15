@@ -116,9 +116,6 @@ export default defineEventHandler(async (event) => {
     event
   );
 
-  console.log("Azure session state:", callbackQueryData.session_state);
-  console.log("Azure id_token:", callbackQueryData.id_token);
-
   return sendRedirect(event, state.redirectTo || "/");
 });
 ```
