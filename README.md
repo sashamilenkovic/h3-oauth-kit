@@ -26,9 +26,11 @@ npm install @sasha-milenkovic/h3-oauth-kit
 
 ---
 
-## Quick Start
+## Example Usage
 
-### 1. Register a provider
+Below are common usage patterns for registering a provider, handling login and callback, and protecting routes.
+
+#### Register a Provider
 
 Before using any login, callback, or route protection helpers, register your provider:
 
@@ -46,8 +48,6 @@ registerOAuthProvider("clio", {
 ```
 
 ---
-
-### Example Usage
 
 #### Login Handler
 
