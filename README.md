@@ -143,11 +143,22 @@ export default defineEventHandler(async (event) => {
 #### Example:
 
 ```ts
+import { defineProtectedRoute } from "@sasha-milenkovic/h3-oauth-kit";
+
 export default defineProtectedRoute(["azure"], async (event) => {
-  return {
-    message: "You're authenticated with Azure!",
-    token: event.context.h3OAuthKit.azure,
-  };
+  const token = event.context.h3OAuthKit.azure.access_token;
+
+  try {
+    return await $fetch(`https://graph.microsoft.com/v1.0/me`, {
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    });
+  } catch (error) {
+    console.error("Error fetching azure user profile:", error);
+
+    throw error;
+  }
 });
 ```
 
