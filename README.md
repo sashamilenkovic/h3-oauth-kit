@@ -73,14 +73,23 @@ export default handleOAuthLogin("azure", { redirect: true });
 #### Utility Usage (e.g. to customize redirect)
 
 ```ts
-import { getQuery } from "h3";
+import { defineEventHandler, getQuery } from "h3";
 import { handleOAuthLogin } from "@sasha-milenkovic/h3-oauth-kit";
 
-export default handleOAuthLogin("azure", {
-  state: (event) => {
-    const { redirectTo } = getQuery(event);
-    return { redirectTo, id: crypto.randomUUID() };
-  },
+export default defineEventHandler(async (event) => {
+  return await handleOAuthLogin(
+    "azure",
+    {
+      state: (event) => {
+        const { redirectTo } = getQuery(event);
+        return {
+          redirectTo: redirectTo ?? "/",
+          requestId: crypto.randomUUID(),
+        };
+      },
+    },
+    event
+  );
 });
 ```
 
