@@ -1,9 +1,9 @@
 # h3-oauth-kit
 
-A type-safe, multi-provider OAuth 2.0 toolkit for [H3](https://github.com/unjs/h3) apps.  
+A type-safe, multi-provider OAuth 2.0 toolkit for [H3](https://github.com/unjs/h3) apps.
 Handles login, callback, token refresh, and protected route middleware — all with automatic cookie storage and typed provider extensions.
 
-> ⚠️ **This package is experimental and currently supports a small number of providers (`clio`, `azure`, `intuit`).**  
+> ⚠️ **This package is experimental and currently supports a small number of providers (`azure`, `clio`, `intuit`).**
 > It's built for internal use but is published publicly for ease of consumption and iteration.
 
 ---
@@ -45,13 +45,14 @@ pnpm add @sasha-milenkovic/h3-oauth-kit
 ```ts
 import { registerOAuthProvider } from "@sasha-milenkovic/h3-oauth-kit";
 
-registerOAuthProvider("clio", {
+registerOAuthProvider("azure", {
   clientId: "YOUR_CLIENT_ID",
   clientSecret: "YOUR_CLIENT_SECRET",
-  redirectUri: "http://localhost:3000/api/auth/clio/callback",
-  tokenEndpoint: "https://app.clio.com/oauth/token",
-  authorizeEndpoint: "https://app.clio.com/oauth/authorize",
-  scopes: ["openid"],
+  redirectUri: "http://localhost:3000/api/auth/azure/callback",
+  tokenEndpoint: "https://login.microsoftonline.com/common/oauth2/v2.0/token",
+  authorizeEndpoint:
+    "https://login.microsoftonline.com/common/oauth2/v2.0/authorize",
+  scopes: ["openid", "profile", "email"],
 });
 ```
 
@@ -63,19 +64,25 @@ registerOAuthProvider("clio", {
 
 - Can be used as a route handler or utility.
 - Supports automatic or manual redirection.
+- If state is not provided, a unique identifier is automatically generated.
 
 #### Route Handler (redirects immediately):
 
 ```ts
-export default handleOAuthLogin("clio", { redirect: true });
+export default handleOAuthLogin("azure", { redirect: true });
 ```
 
 #### Utility Usage (e.g. to customize redirect)
 
 ```ts
-export default defineEventHandler(async (event) => {
-  const { url } = await handleOAuthLogin("clio", {}, event);
-  return sendRedirect(event, url);
+import { getQuery } from "h3";
+import { handleOAuthLogin } from "@sasha-milenkovic/h3-oauth-kit";
+
+export default handleOAuthLogin("azure", {
+  state: (event) => {
+    const { redirectTo } = getQuery(event);
+    return { redirectTo, id: crypto.randomUUID() };
+  },
 });
 ```
 
@@ -89,12 +96,14 @@ export default defineEventHandler(async (event) => {
 #### Route Handler (with redirect):
 
 ```ts
-export default handleOAuthCallback("clio", {
+export default handleOAuthCallback("azure", {
   redirectTo: "/dashboard",
 });
 ```
 
 #### Utility Usage (custom logic after callback):
+
+This example demonstrates how to handle the callback, where `state` represents the data passed during login (or the state provided by the OAuth provider), and `callbackQueryData` contains additional data returned by the provider:
 
 ```ts
 import { defineEventHandler, sendRedirect } from "h3";
@@ -102,14 +111,15 @@ import { handleOAuthCallback } from "@sasha-milenkovic/h3-oauth-kit";
 
 export default defineEventHandler(async (event) => {
   const { state, callbackQueryData } = await handleOAuthCallback(
-    "clio",
+    "azure",
     { redirect: false },
     event
   );
 
-  console.log("Clio callback", state, callbackQueryData);
+  console.log("Azure session state:", callbackQueryData.session_state);
+  console.log("Azure id_token:", callbackQueryData.id_token);
 
-  return sendRedirect(event, `/clio-clients/${state.clio_client_id}`);
+  return sendRedirect(event, state.redirectTo || "/");
 });
 ```
 
@@ -117,23 +127,27 @@ export default defineEventHandler(async (event) => {
 
 ### `defineProtectedRoute(providers, handler, options?)`
 
-- Validates tokens from cookies.
-- Automatically refreshes if expired.
-- Injects tokens into `event.context`:
+- Declares that one or more providers **must be authenticated** before the route handler runs.
+- Automatically checks cookie presence and token freshness.
+- If expired, the access token is refreshed (if possible).
+- If tokens are missing or invalid, a `401` is returned.
+- Injects validated token data into `event.context`, including:
 
-  - `event.context.clio_access_token`
-  - `event.context.h3OAuthKit.clio`
+  - `event.context.azure_access_token` (just the access token)
+  - `event.context.h3OAuthKit.azure` (full token structure, strongly typed)
 
 #### Example:
 
 ```ts
-export default defineProtectedRoute(["clio"], async (event) => {
+export default defineProtectedRoute(["azure"], async (event) => {
   return {
-    message: "You're authenticated!",
-    token: event.context.h3OAuthKit.clio,
+    message: "You're authenticated with Azure!",
+    token: event.context.h3OAuthKit.azure,
   };
 });
 ```
+
+> 💡 This is especially powerful because all tokens are type-safe — you get full IntelliSense and validation for each provider's token fields.
 
 ---
 
@@ -142,13 +156,15 @@ export default defineProtectedRoute(["clio"], async (event) => {
 - Access tokens stored in: `*_access_token`
 - Expiration (absolute): `*_access_token_expires_at`
 - Refresh tokens (optional): `*_refresh_token`
-- Custom provider fields: e.g., `clio_client_id`, `azure_ext_expires_in`
+- Custom provider fields: e.g., `azure_ext_expires_in`, `azure_token_type`
 
 ---
 
 ## Provider Configuration
 
-You can define provider-specific behavior (e.g., which fields to store as cookies) via `providerConfig`. Fields like `token_type`, `client_id`, `realm_id` can be persisted automatically across sessions and refreshes.
+You can define provider-specific behavior (e.g., which fields to store as cookies) via `providerConfig`. Fields like `token_type`, `ext_expires_in`, or `id_token` can be persisted automatically across sessions and refreshes.
+
+These custom fields are automatically read and rehydrated as part of the token refresh and route protection workflows.
 
 ---
 
@@ -157,7 +173,15 @@ You can define provider-specific behavior (e.g., which fields to store as cookie
 Each method is fully typed for provider-specific behavior:
 
 - All tokens returned are strongly typed by provider.
-- You can access token fields directly and safely from `event.context.h3OAuthKit`.
+- Token cookies and refresh responses are parsed into provider-aware shapes.
+- Context is augmented in protected routes:
+
+  ```ts
+  event.context.h3OAuthKit.azure; // full Azure token object
+  event.context.azure_access_token; // just the raw access token string
+  ```
+
+This makes integration seamless and safe across complex authentication workflows.
 
 ---
 
