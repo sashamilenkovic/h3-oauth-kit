@@ -11,10 +11,10 @@ Handles login, callback, token refresh, and protected route middleware — all w
 ## Features
 
 - 🔐 OAuth 2.0 Authorization Code flow support
-- 🍪 Token storage via secure, HTTP-only cookies
+- 🍞 Token storage via secure, HTTP-only cookies
 - 🔁 Automatic token refresh on protected routes
 - 🧠 State validation & metadata preservation
-- 🧰 Utility-first API with full TypeScript safety
+- 🛠️ Utility-first API with full TypeScript safety
 
 ---
 
@@ -24,15 +24,23 @@ Handles login, callback, token refresh, and protected route middleware — all w
 npm install @sasha-milenkovic/h3-oauth-kit
 ```
 
+Or using yarn:
+
+```bash
+yarn add @sasha-milenkovic/h3-oauth-kit
+```
+
+Or using pnpm:
+
+```bash
+pnpm add @sasha-milenkovic/h3-oauth-kit
+```
+
 ---
 
-## Example Usage
+## Quick Start
 
-Below are common usage patterns for registering a provider, handling login and callback, and protecting routes.
-
-#### Register a Provider
-
-Before using any login, callback, or route protection helpers, register your provider:
+### 1. Register your OAuth provider
 
 ```ts
 import { registerOAuthProvider } from "@sasha-milenkovic/h3-oauth-kit";
@@ -49,73 +57,112 @@ registerOAuthProvider("clio", {
 
 ---
 
-#### Login Handler
+## API Overview
+
+### `handleOAuthLogin(provider, options?, event?)`
+
+- Can be used as a route handler or utility.
+- Supports automatic or manual redirection.
+
+#### Route Handler (redirects immediately):
 
 ```ts
-// server/api/auth/clio/login.ts
-import { handleOAuthLogin } from "@sasha-milenkovic/h3-oauth-kit";
-
 export default handleOAuthLogin("clio", { redirect: true });
 ```
 
-#### Custom Login Handler
+#### Utility Usage (e.g. to customize redirect)
 
 ```ts
-// server/api/auth/clio/custom-login.ts
-import { handleOAuthLogin } from "@sasha-milenkovic/h3-oauth-kit";
-
 export default defineEventHandler(async (event) => {
   const { url } = await handleOAuthLogin("clio", {}, event);
-  return sendRedirect(event, url, 302);
+  return sendRedirect(event, url);
 });
 ```
 
-#### Callback Handler
+---
+
+### `handleOAuthCallback(provider, options?, event?)`
+
+- Exchanges code for tokens, verifies state, and stores tokens in cookies.
+- Can auto-redirect or return structured result.
+
+#### Route Handler (with redirect):
 
 ```ts
-// server/api/auth/clio/callback.ts
-import { handleOAuthCallback } from "@sasha-milenkovic/h3-oauth-kit";
-
 export default handleOAuthCallback("clio", {
   redirectTo: "/dashboard",
 });
 ```
 
-#### Custom Callback Handler
+#### Utility Usage (custom logic after callback):
 
 ```ts
-// server/api/auth/clio/custom-callback.ts
-import { handleOAuthCallback } from "@sasha-milenkovic/h3-oauth-kit";
-
 export default defineEventHandler(async (event) => {
-  const { tokens, state, callbackQueryData } = await handleOAuthCallback(
+  const { tokens, state } = await handleOAuthCallback(
     "clio",
     { redirect: false },
     event
   );
-
-  // Example: use `state.from` or other state values to determine redirect
-  const redirectPath =
-    typeof state === "object" && state?.from ? String(state.from) : "/";
-
-  return sendRedirect(event, redirectPath);
+  const redirectTo =
+    typeof state === "object" && state?.from ? state.from : "/";
+  return sendRedirect(event, redirectTo);
 });
 ```
 
-#### Protecting a Route
+---
+
+### `defineProtectedRoute(providers, handler, options?)`
+
+- Validates tokens from cookies.
+- Automatically refreshes if expired.
+- Injects tokens into `event.context`:
+
+  - `event.context.clio_access_token`
+  - `event.context.h3OAuthKit.clio`
+
+#### Example:
 
 ```ts
-// server/api/secure-data.ts
-import { defineProtectedRoute } from "@sasha-milenkovic/h3-oauth-kit";
-
 export default defineProtectedRoute(["clio"], async (event) => {
-  const accessToken = event.context.clio_access_token;
-  const fullToken = event.context.h3OAuthKit.clio;
-
   return {
-    message: "Protected content",
-    accessToken,
-    tokenDetails: fullToken,
+    message: "You're authenticated!",
+    token: event.context.h3OAuthKit.clio,
   };
 });
 ```
+
+---
+
+## Tokens & Cookies
+
+- Access tokens stored in: `*_access_token`
+- Expiration (absolute): `*_access_token_expires_at`
+- Refresh tokens (optional): `*_refresh_token`
+- Custom provider fields: e.g., `clio_client_id`, `azure_ext_expires_in`
+
+---
+
+## Provider Configuration
+
+You can define provider-specific behavior (e.g., which fields to store as cookies) via `providerConfig`. Fields like `token_type`, `client_id`, `realm_id` can be persisted automatically across sessions and refreshes.
+
+---
+
+## Type Safety
+
+Each method is fully typed for provider-specific behavior:
+
+- All tokens returned are strongly typed by provider.
+- You can access token fields directly and safely from `event.context.h3OAuthKit`.
+
+---
+
+## License
+
+[MIT](./LICENSE)
+
+---
+
+## Author
+
+Made with ❤️ by [@sasha-milenkovic](https://github.com/sasha-milenkovic)
