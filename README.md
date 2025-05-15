@@ -97,15 +97,19 @@ export default handleOAuthCallback("clio", {
 #### Utility Usage (custom logic after callback):
 
 ```ts
+import { defineEventHandler, sendRedirect } from "h3";
+import { handleOAuthCallback } from "@sasha-milenkovic/h3-oauth-kit";
+
 export default defineEventHandler(async (event) => {
-  const { tokens, state } = await handleOAuthCallback(
+  const { state, callbackQueryData } = await handleOAuthCallback(
     "clio",
     { redirect: false },
     event
   );
-  const redirectTo =
-    typeof state === "object" && state?.from ? state.from : "/";
-  return sendRedirect(event, redirectTo);
+
+  console.log("Clio callback", state, callbackQueryData);
+
+  return sendRedirect(event, `/clio-clients/${state.clio_client_id}`);
 });
 ```
 
