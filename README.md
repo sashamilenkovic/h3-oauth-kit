@@ -38,7 +38,7 @@ pnpm add @sasha-milenkovic/h3-oauth-kit
 
 ---
 
-## Quick Start
+## API Overview
 
 ### 1. Register your OAuth provider
 
@@ -57,8 +57,6 @@ registerOAuthProvider("azure", {
 ```
 
 ---
-
-## API Overview
 
 ### `handleOAuthLogin(provider, options?, event?)`
 
