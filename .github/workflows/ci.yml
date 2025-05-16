@@ -68,6 +68,8 @@ jobs:
       - name: Print NPM_TOKEN
         run: echo "NPM_TOKEN is set and starts with: ${NPM_TOKEN:0:4}****"
 
+      - name: Print GH_TOKEN
+        run: echo "GH_TOKEN is set and starts with: ${GH_TOKEN:0:4}****"
 
       - name: Release with semantic-release
         run: npx semantic-release
