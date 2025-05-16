@@ -13,6 +13,7 @@ import type {
   BaseOAuthCallbackQuery,
   ProviderFieldValue,
   TokenField,
+  OAuthErrorResponse,
 } from "./types";
 
 import { setCookie, getCookie, deleteCookie, getQuery, createError } from "h3";
@@ -149,48 +150,102 @@ export function setProviderCookies<P extends OAuthProvider>(
  * - `statusCode`: HTTP error status (default: `500`)
  * - `message`: A human-readable error message
  */
-export async function parseOAuthError(error: unknown): Promise<{
+export async function parseError(error: unknown): Promise<{
   statusCode: number;
   message: string;
 }> {
   let statusCode = 500;
-  let message = "Token exchange failed";
+  let message = "h3-oauth-kit error";
 
-  if (typeof error === "object" && error !== null && "response" in error) {
-    const response = (error as { response: unknown }).response;
+  // Step 1: Check for `response.status` and `response.json()`
+  if (isFetchErrorWithResponse(error)) {
+    const response = error.response;
 
-    if (
-      typeof response === "object" &&
-      response !== null &&
-      "status" in response &&
-      typeof (response as { status: unknown }).status === "number"
-    ) {
-      statusCode = (response as { status: number }).status;
+    if (typeof response.status === "number") {
+      statusCode = response.status;
     }
 
-    if (
-      typeof response === "object" &&
-      response !== null &&
-      "json" in response &&
-      typeof (response as { json: unknown }).json === "function"
-    ) {
+    if (typeof response.json === "function") {
       try {
-        const json = await (
-          response as {
-            json: () => Promise<OAuthErrorResponse>;
-          }
-        ).json();
-
-        if (json.error_description || json.error) {
-          message = json.error_description || json.error!;
+        const json = await response.json();
+        if (isOAuthErrorResponse(json)) {
+          message = json.error_description || json.error || message;
         }
       } catch {
-        // Swallow JSON parse errors — fallback to default message
+        // ignore parse failure
       }
     }
   }
 
+  // Step 2: Fallback to top-level `error.message` if message is still default
+  if (message === "h3-oauth-kit error" && isErrorWithMessage(error)) {
+    message = error.message;
+  }
+
   return { statusCode, message };
+}
+
+/**
+ * @internal
+ *
+ * Checks if an error object has a `response` property with a `status` or `json` method.
+ *
+ * @param error - The error object to check.
+ *
+ * @returns `true` if the error has a `response` property with a `status` or `json` method, `false` otherwise.
+ */
+function isFetchErrorWithResponse(error: unknown): error is {
+  response: {
+    status?: number;
+    json?: () => Promise<unknown>;
+  };
+} {
+  if (typeof error === "object" && error !== null && "response" in error) {
+    const maybeResponse = (error as { response: unknown }).response;
+
+    return (
+      typeof maybeResponse === "object" &&
+      maybeResponse !== null &&
+      ("status" in maybeResponse || "json" in maybeResponse)
+    );
+  }
+
+  return false;
+}
+
+/**
+ * @internal
+ *
+ * Checks if a JSON object is an OAuth error response.
+ *
+ * @param json - The JSON object to check.
+ *
+ * @returns `true` if the object is an OAuth error response, `false` otherwise.
+ */
+function isOAuthErrorResponse(json: unknown): json is OAuthErrorResponse {
+  return (
+    typeof json === "object" &&
+    json !== null &&
+    ("error" in json || "error_description" in json)
+  );
+}
+
+/**
+ * @internal
+ *
+ * Checks if an error object has a `message` property.
+ *
+ * @param error - The error object to check.
+ *
+ * @returns `true` if the error has a `message` property, `false` otherwise.
+ */
+function isErrorWithMessage(error: unknown): error is { message: string } {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    "message" in error &&
+    typeof (error as Record<string, unknown>).message === "string"
+  );
 }
 
 /**
@@ -444,7 +499,7 @@ export async function exchangeCodeForTokens<P extends OAuthProvider>(
       body: new URLSearchParams(params).toString(),
     });
   } catch (error: unknown) {
-    const { statusCode, message } = await parseOAuthError(error);
+    const { statusCode, message } = await parseError(error);
 
     throw createError({ statusCode, message });
   }
@@ -554,7 +609,7 @@ export async function refreshToken<P extends OAuthProvider>(
     // Cast back to token response — optional string coercion step removed
     return tokenResponse;
   } catch (error: unknown) {
-    const { statusCode, message } = await parseOAuthError(error);
+    const { statusCode, message } = await parseError(error);
 
     throw createError({ statusCode, message });
   }

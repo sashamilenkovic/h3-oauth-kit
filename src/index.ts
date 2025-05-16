@@ -14,7 +14,13 @@ import type {
   OAuthCallbackQuery,
 } from "./types";
 
-import { defineEventHandler, createError, sendRedirect, getQuery } from "h3";
+import {
+  defineEventHandler,
+  createError,
+  sendRedirect,
+  getQuery,
+  isError,
+} from "h3";
 import {
   setProviderCookies,
   parseOAuthState,
@@ -26,6 +32,7 @@ import {
   parseOAuthCallbackQuery,
   oAuthTokensAreValid,
   refreshToken,
+  parseError,
 } from "./utils";
 
 /**
@@ -195,6 +202,11 @@ export function handleOAuthCallback<P extends OAuthProvider>(
     redirect?: false;
     redirectTo?: string;
     cookieOptions?: CookieOptionsOverride;
+    onError?: (
+      error: unknown,
+      event: H3Event,
+      provider: P
+    ) => Promise<unknown> | unknown;
   },
   event: H3Event
 ): Promise<{
@@ -210,6 +222,11 @@ export function handleOAuthCallback<P extends OAuthProvider>(
     redirect: true;
     redirectTo?: string;
     cookieOptions?: CookieOptionsOverride;
+    onError?: (
+      error: unknown,
+      event: H3Event,
+      provider: P
+    ) => Promise<unknown> | unknown;
   },
   event: H3Event
 ): Promise<void>;
@@ -221,6 +238,11 @@ export function handleOAuthCallback<P extends OAuthProvider>(
     redirect?: boolean;
     redirectTo?: string;
     cookieOptions?: CookieOptionsOverride;
+    onError?: (
+      error: unknown,
+      event: H3Event,
+      provider: P
+    ) => Promise<unknown> | unknown;
   },
   event?: undefined
 ): EventHandler;
@@ -231,6 +253,11 @@ export function handleOAuthCallback<P extends OAuthProvider>(
     redirect?: boolean;
     redirectTo?: string;
     cookieOptions?: CookieOptionsOverride;
+    onError?: (
+      error: unknown,
+      event: H3Event,
+      provider: P
+    ) => Promise<unknown> | unknown;
   },
   event?: H3Event
 ):
@@ -242,48 +269,66 @@ export function handleOAuthCallback<P extends OAuthProvider>(
     }>
   | Promise<void> {
   const handler = async (evt: H3Event) => {
-    const query = getQuery(evt);
+    try {
+      const query = getQuery(evt);
 
-    const { code, state } = query;
+      const { code, state } = query;
 
-    if (!code || typeof code !== "string") {
+      if (!code || typeof code !== "string") {
+        throw createError({
+          statusCode: 400,
+          statusMessage: "Authorization code missing in callback URL",
+        });
+      }
+
+      if (!state || typeof state !== "string") {
+        throw createError({
+          statusCode: 400,
+          statusMessage: "State missing in callback URL",
+        });
+      }
+
+      verifyStateParam(evt, provider, state);
+
+      const parsedState = parseOAuthState(state);
+
+      const config = getOAuthProviderConfig(provider);
+
+      const rawTokens = await exchangeCodeForTokens(code, config, provider);
+
+      const callbackQueryData = parseOAuthCallbackQuery(evt, provider);
+
+      const tokens = setProviderCookies(
+        evt,
+        rawTokens,
+        provider,
+        options?.cookieOptions
+      );
+
+      const redirectTo = options?.redirectTo || "/";
+
+      if (options?.redirect === false) {
+        return { tokens, state: parsedState, callbackQueryData };
+      }
+
+      return sendRedirect(evt, redirectTo, 302);
+    } catch (error) {
+      if (options?.onError) {
+        const result = await options.onError(error, evt, provider);
+        if (result !== undefined) return result;
+      }
+
+      if (isError(error)) {
+        throw error; // already an H3Error (e.g. from `createError`)
+      }
+
+      const { statusCode, message } = await parseError(error);
       throw createError({
-        statusCode: 400,
-        statusMessage: "Authorization code missing in callback URL",
+        statusCode,
+        statusMessage: message,
+        cause: error,
       });
     }
-
-    if (!state || typeof state !== "string") {
-      throw createError({
-        statusCode: 400,
-        statusMessage: "State missing in callback URL",
-      });
-    }
-
-    verifyStateParam(evt, provider, state);
-
-    const parsedState = parseOAuthState(state);
-
-    const config = getOAuthProviderConfig(provider);
-
-    const rawTokens = await exchangeCodeForTokens(code, config, provider);
-
-    const callbackQueryData = parseOAuthCallbackQuery(evt, provider);
-
-    const tokens = setProviderCookies(
-      evt,
-      rawTokens,
-      provider,
-      options?.cookieOptions
-    );
-
-    const redirectTo = options?.redirectTo || "/";
-
-    if (options?.redirect === false) {
-      return { tokens, state: parsedState, callbackQueryData };
-    }
-
-    return sendRedirect(evt, redirectTo, 302);
   };
 
   if (event) {
@@ -332,52 +377,107 @@ export function defineProtectedRoute<Providers extends OAuthProvider[]>(
 ) {
   return defineEventHandler(async (event): Promise<unknown> => {
     const ctx = event.context as AugmentedContext<Providers>;
-
     ctx.h3OAuthKit = {} as AugmentedContext<Providers>["h3OAuthKit"];
 
     for (const provider of providers) {
-      const result = await oAuthTokensAreValid(event, provider);
+      try {
+        const result = await oAuthTokensAreValid(event, provider);
 
-      if (!result) {
-        throw createError({
-          statusCode: 401,
-          message: `Missing or invalid tokens for "${provider}"`,
-        });
-      }
-
-      let tokens = result.tokens;
-
-      if (result.status === "expired") {
-        const config = getOAuthProviderConfig(provider);
-
-        const refreshed = await refreshToken(
-          result.tokens.refresh_token!,
-          config,
-          provider
-        );
-
-        if (!refreshed) {
-          throw createError({
+        if (!result) {
+          const error = createError({
             statusCode: 401,
-            message: `Token refresh failed for "${provider}"`,
+            message: `Missing or invalid tokens for "${provider}"`,
           });
+
+          if (options?.onAuthFailure) {
+            const response = await options.onAuthFailure(
+              event,
+              provider,
+              "missing-or-invalid-tokens",
+              error
+            );
+
+            if (response !== undefined) return response;
+          }
+
+          throw error;
         }
 
-        const fullToken = normalizeRefreshedToken(provider, refreshed, tokens);
+        let tokens = result.tokens;
 
-        tokens = setProviderCookies(
-          event,
-          fullToken,
-          provider,
-          options?.cookieOptions
-        );
+        if (result.status === "expired") {
+          const config = getOAuthProviderConfig(provider);
+
+          const refreshed = await refreshToken(
+            result.tokens.refresh_token!,
+            config,
+            provider
+          );
+
+          if (!refreshed) {
+            const error = createError({
+              statusCode: 401,
+              message: `Token refresh failed for "${provider}"`,
+            });
+
+            if (options?.onAuthFailure) {
+              const response = await options.onAuthFailure(
+                event,
+                provider,
+                "token-refresh-failed",
+                error
+              );
+
+              if (response !== undefined) return response;
+            }
+
+            throw error;
+          }
+
+          const fullToken = normalizeRefreshedToken(
+            provider,
+            refreshed,
+            tokens
+          );
+
+          tokens = setProviderCookies(
+            event,
+            fullToken,
+            provider,
+            options?.cookieOptions
+          );
+        }
+
+        const key =
+          `${provider}_access_token` as ProviderAccessTokenKeys<Providers>;
+
+        ctx[key as keyof typeof ctx] = tokens.access_token;
+
+        ctx.h3OAuthKit[provider] = tokens as ProviderToken<typeof provider>;
+      } catch (error) {
+        if (options?.onAuthFailure) {
+          const response = await options.onAuthFailure(
+            event,
+            provider,
+            "error-occurred",
+            error
+          );
+
+          if (response !== undefined) return response;
+        }
+
+        if (isError(error)) {
+          throw error;
+        }
+
+        const { statusCode, message } = await parseError(error);
+
+        throw createError({
+          statusCode,
+          statusMessage: message,
+          cause: error,
+        });
       }
-
-      const key =
-        `${provider}_access_token` as ProviderAccessTokenKeys<Providers>;
-
-      ctx[key as keyof typeof ctx] = tokens.access_token;
-      ctx.h3OAuthKit[provider] = tokens as ProviderToken<typeof provider>;
     }
 
     return handler(event as H3Event & { context: AugmentedContext<Providers> });

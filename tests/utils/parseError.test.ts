@@ -1,13 +1,13 @@
 import { describe, it, expect } from "vitest";
-import { parseOAuthError } from "../../src/utils";
+import { parseError } from "../../src/utils";
 
-describe("parseOAuthError", () => {
+describe("parseError", () => {
   it("returns default message and 500 for unknown error shapes", async () => {
-    const result = await parseOAuthError(new Error("Something failed"));
+    const result = await parseError(new Error("Something failed"));
 
     expect(result).toEqual({
       statusCode: 500,
-      message: "Token exchange failed",
+      message: "Something failed",
     });
   });
 
@@ -22,7 +22,7 @@ describe("parseOAuthError", () => {
       },
     };
 
-    const result = await parseOAuthError(error);
+    const result = await parseError(error);
 
     expect(result).toEqual({
       statusCode: 401,
@@ -40,7 +40,7 @@ describe("parseOAuthError", () => {
       },
     };
 
-    const result = await parseOAuthError(error);
+    const result = await parseError(error);
 
     expect(result).toEqual({
       statusCode: 403,
@@ -58,11 +58,11 @@ describe("parseOAuthError", () => {
       },
     };
 
-    const result = await parseOAuthError(error);
+    const result = await parseError(error);
 
     expect(result).toEqual({
       statusCode: 400,
-      message: "Token exchange failed",
+      message: "h3-oauth-kit error",
     });
   });
 
@@ -76,7 +76,7 @@ describe("parseOAuthError", () => {
       },
     };
 
-    const result = await parseOAuthError(error);
+    const result = await parseError(error);
 
     expect(result).toEqual({
       statusCode: 500,
@@ -94,20 +94,20 @@ describe("parseOAuthError", () => {
       },
     };
 
-    const result = await parseOAuthError(error);
+    const result = await parseError(error);
 
     expect(result).toEqual({
       statusCode: 400,
-      message: "Token exchange failed", // fallback
+      message: "h3-oauth-kit error", // fallback
     });
   });
 
   it("returns default when error is not an object", async () => {
-    const result = await parseOAuthError(undefined); // or a string, or number
+    const result = await parseError(undefined); // or a string, or number
 
     expect(result).toEqual({
       statusCode: 500,
-      message: "Token exchange failed",
+      message: "h3-oauth-kit error",
     });
   });
 });

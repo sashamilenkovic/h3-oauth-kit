@@ -185,6 +185,15 @@ export interface HandleOAuthCallbackOptions {
 
 export interface ProtectedRouteOptions {
   cookieOptions?: CookieOptionsOverride;
+  onAuthFailure?: (
+    event: H3Event,
+    provider: OAuthProvider,
+    reason:
+      | "missing-or-invalid-tokens"
+      | "token-refresh-failed"
+      | "error-occurred",
+    error: unknown
+  ) => Promise<unknown> | unknown;
 }
 
 export interface OAuthErrorResponse {
@@ -254,4 +263,9 @@ export interface ProviderConfig<P extends OAuthProvider> {
   providerSpecificFields: TokenField<P>[];
   callbackQueryFields?: (keyof OAuthCallbackQuery<P>)[];
   validateRefreshTokenExpiry?: boolean;
+}
+
+export interface OAuthErrorResponse {
+  error?: string;
+  error_description?: string;
 }
