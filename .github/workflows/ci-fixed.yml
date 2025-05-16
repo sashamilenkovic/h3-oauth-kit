@@ -65,17 +65,17 @@ jobs:
       - name: Install dependencies
         run: pnpm install
 
-      - name: Print NPM_TOKEN
-        run: |
-          echo "NPM_TOKEN is set and starts with: $(echo $NPM_TOKEN | cut -c1-4)****"
+      # Test NPM token is set
+      - name: Check NPM_TOKEN
         env:
           NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: echo "NPM_TOKEN is set and starts with: $(echo $NPM_TOKEN | cut -c1-4)****"
 
-      - name: Print GH_TOKEN
-        run: |
-          echo "GH_TOKEN is set and starts with: $(echo $GH_TOKEN | cut -c1-4)****"
+      # Test GitHub token is set
+      - name: Check GH_TOKEN
         env:
           GH_TOKEN: ${{ secrets.GH_TOKEN }}
+        run: echo "GH_TOKEN is set and starts with: $(echo $GH_TOKEN | cut -c1-4)****"
 
       - name: Release with semantic-release
         run: npx semantic-release
