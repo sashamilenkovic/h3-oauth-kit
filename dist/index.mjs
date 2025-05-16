@@ -1,4 +1,4 @@
-import { getCookie, createError, setCookie, deleteCookie, getQuery, defineEventHandler, sendRedirect } from 'h3';
+import { getCookie, createError, setCookie, deleteCookie, getQuery, defineEventHandler, isError, sendRedirect } from 'h3';
 import { ofetch } from 'ofetch';
 
 const providerConfig = {
@@ -73,25 +73,41 @@ function setProviderCookies(event, tokens, provider, options) {
   setProviderCookieFields(event, tokens, provider, base);
   return tokens;
 }
-async function parseOAuthError(error) {
+async function parseError(error) {
   let statusCode = 500;
-  let message = "Token exchange failed";
-  if (typeof error === "object" && error !== null && "response" in error) {
+  let message = "h3-oauth-kit error";
+  if (isFetchErrorWithResponse(error)) {
     const response = error.response;
-    if (typeof response === "object" && response !== null && "status" in response && typeof response.status === "number") {
+    if (typeof response.status === "number") {
       statusCode = response.status;
     }
-    if (typeof response === "object" && response !== null && "json" in response && typeof response.json === "function") {
+    if (typeof response.json === "function") {
       try {
         const json = await response.json();
-        if (json.error_description || json.error) {
-          message = json.error_description || json.error;
+        if (isOAuthErrorResponse(json)) {
+          message = json.error_description || json.error || message;
         }
       } catch {
       }
     }
   }
+  if (message === "h3-oauth-kit error" && isErrorWithMessage(error)) {
+    message = error.message;
+  }
   return { statusCode, message };
+}
+function isFetchErrorWithResponse(error) {
+  if (typeof error === "object" && error !== null && "response" in error) {
+    const maybeResponse = error.response;
+    return typeof maybeResponse === "object" && maybeResponse !== null && ("status" in maybeResponse || "json" in maybeResponse);
+  }
+  return false;
+}
+function isOAuthErrorResponse(json) {
+  return typeof json === "object" && json !== null && ("error" in json || "error_description" in json);
+}
+function isErrorWithMessage(error) {
+  return typeof error === "object" && error !== null && "message" in error && typeof error.message === "string";
 }
 function omitUndefinedValues(input) {
   return Object.fromEntries(
@@ -187,7 +203,7 @@ async function exchangeCodeForTokens(code, config, _provider) {
       body: new URLSearchParams(params).toString()
     });
   } catch (error) {
-    const { statusCode, message } = await parseOAuthError(error);
+    const { statusCode, message } = await parseError(error);
     throw createError({ statusCode, message });
   }
 }
@@ -235,7 +251,7 @@ async function refreshToken(refreshTokenValue, providerConfig2, _provider) {
     );
     return tokenResponse;
   } catch (error) {
-    const { statusCode, message } = await parseOAuthError(error);
+    const { statusCode, message } = await parseError(error);
     throw createError({ statusCode, message });
   }
 }
@@ -390,36 +406,52 @@ function handleOAuthLogin(provider, options, event) {
 }
 function handleOAuthCallback(provider, options, event) {
   const handler = async (evt) => {
-    const query = getQuery(evt);
-    const { code, state } = query;
-    if (!code || typeof code !== "string") {
+    try {
+      const query = getQuery(evt);
+      const { code, state } = query;
+      if (!code || typeof code !== "string") {
+        throw createError({
+          statusCode: 400,
+          statusMessage: "Authorization code missing in callback URL"
+        });
+      }
+      if (!state || typeof state !== "string") {
+        throw createError({
+          statusCode: 400,
+          statusMessage: "State missing in callback URL"
+        });
+      }
+      verifyStateParam(evt, provider, state);
+      const parsedState = parseOAuthState(state);
+      const config = getOAuthProviderConfig(provider);
+      const rawTokens = await exchangeCodeForTokens(code, config, provider);
+      const callbackQueryData = parseOAuthCallbackQuery(evt, provider);
+      const tokens = setProviderCookies(
+        evt,
+        rawTokens,
+        provider,
+        options?.cookieOptions
+      );
+      const redirectTo = options?.redirectTo || "/";
+      if (options?.redirect === false) {
+        return { tokens, state: parsedState, callbackQueryData };
+      }
+      return sendRedirect(evt, redirectTo, 302);
+    } catch (error) {
+      if (options?.onError) {
+        const result = await options.onError(error, evt, provider);
+        if (result !== void 0) return result;
+      }
+      if (isError(error)) {
+        throw error;
+      }
+      const { statusCode, message } = await parseError(error);
       throw createError({
-        statusCode: 400,
-        statusMessage: "Authorization code missing in callback URL"
+        statusCode,
+        statusMessage: message,
+        cause: error
       });
     }
-    if (!state || typeof state !== "string") {
-      throw createError({
-        statusCode: 400,
-        statusMessage: "State missing in callback URL"
-      });
-    }
-    verifyStateParam(evt, provider, state);
-    const parsedState = parseOAuthState(state);
-    const config = getOAuthProviderConfig(provider);
-    const rawTokens = await exchangeCodeForTokens(code, config);
-    const callbackQueryData = parseOAuthCallbackQuery(evt, provider);
-    const tokens = setProviderCookies(
-      evt,
-      rawTokens,
-      provider,
-      options?.cookieOptions
-    );
-    const redirectTo = options?.redirectTo || "/";
-    if (options?.redirect === false) {
-      return { tokens, state: parsedState, callbackQueryData };
-    }
-    return sendRedirect(evt, redirectTo, 302);
   };
   if (event) {
     if (options?.redirect === false) {
@@ -435,36 +467,83 @@ function defineProtectedRoute(providers, handler, options) {
     const ctx = event.context;
     ctx.h3OAuthKit = {};
     for (const provider of providers) {
-      const result = await oAuthTokensAreValid(event, provider);
-      if (!result) {
+      try {
+        const result = await oAuthTokensAreValid(event, provider);
+        if (!result) {
+          const error = createError({
+            statusCode: 401,
+            message: `Missing or invalid tokens for "${provider}"`
+          });
+          if (options?.onAuthFailure) {
+            const response = await options.onAuthFailure(
+              event,
+              provider,
+              "missing-or-invalid-tokens",
+              error
+            );
+            if (response !== void 0) return response;
+          }
+          throw error;
+        }
+        let tokens = result.tokens;
+        if (result.status === "expired") {
+          const config = getOAuthProviderConfig(provider);
+          const refreshed = await refreshToken(
+            result.tokens.refresh_token,
+            config,
+            provider
+          );
+          if (!refreshed) {
+            const error = createError({
+              statusCode: 401,
+              message: `Token refresh failed for "${provider}"`
+            });
+            if (options?.onAuthFailure) {
+              const response = await options.onAuthFailure(
+                event,
+                provider,
+                "token-refresh-failed",
+                error
+              );
+              if (response !== void 0) return response;
+            }
+            throw error;
+          }
+          const fullToken = normalizeRefreshedToken(
+            provider,
+            refreshed,
+            tokens
+          );
+          tokens = setProviderCookies(
+            event,
+            fullToken,
+            provider,
+            options?.cookieOptions
+          );
+        }
+        const key = `${provider}_access_token`;
+        ctx[key] = tokens.access_token;
+        ctx.h3OAuthKit[provider] = tokens;
+      } catch (error) {
+        if (options?.onAuthFailure) {
+          const response = await options.onAuthFailure(
+            event,
+            provider,
+            "error-occurred",
+            error
+          );
+          if (response !== void 0) return response;
+        }
+        if (isError(error)) {
+          throw error;
+        }
+        const { statusCode, message } = await parseError(error);
         throw createError({
-          statusCode: 401,
-          message: `Missing or invalid tokens for "${provider}"`
+          statusCode,
+          statusMessage: message,
+          cause: error
         });
       }
-      let tokens = result.tokens;
-      if (result.status === "expired") {
-        const config = getOAuthProviderConfig(provider);
-        const refreshed = await refreshToken(
-          result.tokens.refresh_token,
-          config);
-        if (!refreshed) {
-          throw createError({
-            statusCode: 401,
-            message: `Token refresh failed for "${provider}"`
-          });
-        }
-        const fullToken = normalizeRefreshedToken(provider, refreshed, tokens);
-        tokens = setProviderCookies(
-          event,
-          fullToken,
-          provider,
-          options?.cookieOptions
-        );
-      }
-      const key = `${provider}_access_token`;
-      ctx[key] = tokens.access_token;
-      ctx.h3OAuthKit[provider] = tokens;
     }
     return handler(event);
   });

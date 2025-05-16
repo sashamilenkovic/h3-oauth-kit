@@ -136,10 +136,7 @@ interface HandleOAuthCallbackOptions {
 }
 interface ProtectedRouteOptions {
     cookieOptions?: CookieOptionsOverride;
-}
-interface OAuthErrorResponse {
-    error?: string;
-    error_description?: string;
+    onAuthFailure?: (event: H3Event, provider: OAuthProvider, reason: "missing-or-invalid-tokens" | "token-refresh-failed" | "error-occurred", error: unknown) => Promise<unknown> | unknown;
 }
 interface BaseOAuthCookies {
     access_token: string;
@@ -189,6 +186,14 @@ interface ProviderConfig<P extends OAuthProvider> {
     providerSpecificFields: TokenField<P>[];
     callbackQueryFields?: (keyof OAuthCallbackQuery<P>)[];
     validateRefreshTokenExpiry?: boolean;
+}
+interface OAuthErrorResponse {
+    error?: string;
+    error_description?: string;
+}
+interface OAuthErrorResponse {
+    error?: string;
+    error_description?: string;
 }
 
 /**
@@ -299,6 +304,7 @@ declare function handleOAuthCallback<P extends OAuthProvider>(provider: P, optio
     redirect?: false;
     redirectTo?: string;
     cookieOptions?: CookieOptionsOverride;
+    onError?: (error: unknown, event: H3Event, provider: P) => Promise<unknown> | unknown;
 }, event: H3Event): Promise<{
     tokens: OAuthProviderTokenMap[P];
     state: OAuthParsedState;
@@ -308,11 +314,13 @@ declare function handleOAuthCallback<P extends OAuthProvider>(provider: P, optio
     redirect: true;
     redirectTo?: string;
     cookieOptions?: CookieOptionsOverride;
+    onError?: (error: unknown, event: H3Event, provider: P) => Promise<unknown> | unknown;
 }, event: H3Event): Promise<void>;
 declare function handleOAuthCallback<P extends OAuthProvider>(provider: P, options?: {
     redirect?: boolean;
     redirectTo?: string;
     cookieOptions?: CookieOptionsOverride;
+    onError?: (error: unknown, event: H3Event, provider: P) => Promise<unknown> | unknown;
 }, event?: undefined): EventHandler;
 /**
  * Defines an H3 route handler that requires valid OAuth tokens for one or more providers.
