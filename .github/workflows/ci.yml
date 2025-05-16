@@ -6,7 +6,7 @@ on:
       - "**"
 
 jobs:
-  test:
+  vitest:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
@@ -37,7 +37,7 @@ jobs:
 
   release:
     if: github.ref == 'refs/heads/main'
-    needs: test
+    needs: vitest
     runs-on: ubuntu-latest
 
     steps:
@@ -63,5 +63,5 @@ jobs:
       - name: Release with semantic-release
         run: npx semantic-release
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
           NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
