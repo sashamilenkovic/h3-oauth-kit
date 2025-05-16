@@ -2,11 +2,18 @@
 export default {
   branches: ["main"],
   plugins: [
-    "@semantic-release/commit-analyzer", // analyzes commits for version bumps
-    "@semantic-release/release-notes-generator", // generates changelog text
-    "@semantic-release/changelog", // updates CHANGELOG.md
-    "@semantic-release/npm", // bumps version in package.json
-    "@semantic-release/git", // commits changelog + package.json changes
-    "@semantic-release/github", // creates GitHub releases
+    "@semantic-release/commit-analyzer",
+    "@semantic-release/release-notes-generator",
+    "@semantic-release/changelog",
+    "@semantic-release/npm", // defaults to npmPublish: true
+    [
+      "@semantic-release/git",
+      {
+        assets: ["package.json", "pnpm-lock.yaml", "CHANGELOG.md"],
+        message:
+          "chore(release): ${nextRelease.version} [skip ci]\n\n${nextRelease.notes}",
+      },
+    ],
+    "@semantic-release/github",
   ],
 };
