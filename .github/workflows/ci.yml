@@ -65,6 +65,10 @@ jobs:
       - name: Install dependencies
         run: pnpm install
 
+      - name: Print NPM_TOKEN
+        run: echo "NPM_TOKEN is set and starts with: ${NPM_TOKEN:0:4}****"
+
+
       - name: Release with semantic-release
         run: npx semantic-release
         env:
