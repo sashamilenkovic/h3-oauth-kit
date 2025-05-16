@@ -110,4 +110,39 @@ describe("parseError", () => {
       message: "h3-oauth-kit error",
     });
   });
+
+  it("returns default message if json is not an OAuth error shape", async () => {
+    const error = {
+      response: {
+        status: 502,
+        json: async () => ({ unexpected: "value" }), // missing error keys
+      },
+    };
+
+    const result = await parseError(error);
+
+    expect(result).toEqual({
+      statusCode: 502,
+      message: "h3-oauth-kit error", // fallback to default
+    });
+  });
+
+  it("falls back to default message when error and error_description are missing", async () => {
+    const error = {
+      response: {
+        status: 502,
+        json: async () => ({
+          error: undefined,
+          error_description: undefined,
+        }),
+      },
+    };
+
+    const result = await parseError(error);
+
+    expect(result).toEqual({
+      statusCode: 502,
+      message: "h3-oauth-kit error",
+    });
+  });
 });

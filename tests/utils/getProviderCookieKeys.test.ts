@@ -1,5 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { getProviderCookieKeys } from "../../src/utils";
+import { providerConfig } from "../../src/providerConfig";
+import type { OAuthProvider } from "../../src/types";
 
 describe("getProviderCookieKeys", () => {
   it("returns correct keys for azure", () => {
@@ -25,6 +27,21 @@ describe("getProviderCookieKeys", () => {
       "intuit_refresh_token",
       "intuit_access_token_expires_at",
       "intuit_refresh_token_expires_at",
+    ]);
+  });
+
+  it("handles string-based field correctly", () => {
+    const fakeProvider = "fake" as OAuthProvider;
+    providerConfig[fakeProvider] = {
+      providerSpecificFields: ["custom_field"],
+    } as any;
+
+    const result = getProviderCookieKeys(fakeProvider);
+    expect(result).toEqual([
+      "fake_access_token",
+      "fake_refresh_token",
+      "fake_access_token_expires_at",
+      "fake_custom_field",
     ]);
   });
 });
