@@ -901,6 +901,35 @@ export function setProviderCookieFields<P extends OAuthProvider>(
 /**
  * @internal
  *
+ * Retrieves all cookie keys for a given OAuth provider.
+ *
+ * This function constructs an array of all cookie names used for a provider's
+ * tokens and fields.
+ *
+ * @param provider - The OAuth provider key (e.g., `"clio"`, `"azure"`, `"intuit"`).
+ *
+ * @returns An array of all cookie keys for the provider.
+ */
+export function getProviderCookieKeys(provider: OAuthProvider): string[] {
+  const base = [
+    `${provider}_access_token`,
+    `${provider}_refresh_token`,
+    `${provider}_access_token_expires_at`,
+  ];
+
+  const specific = providerConfig[provider].providerSpecificFields.map(
+    (field) =>
+      typeof field === "string"
+        ? `${provider}_${field}`
+        : field.cookieName ?? `${provider}_${String(field.key)}`
+  );
+
+  return [...base, ...specific];
+}
+
+/**
+ * @internal
+ *
  * Resolves the metadata fields configured for a given OAuth provider into a normalized list.
  *
  * Each entry in the returned array describes:

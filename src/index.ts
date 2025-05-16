@@ -20,6 +20,7 @@ import {
   sendRedirect,
   getQuery,
   isError,
+  deleteCookie,
 } from "h3";
 import {
   setProviderCookies,
@@ -33,6 +34,7 @@ import {
   oAuthTokensAreValid,
   refreshToken,
   parseError,
+  getProviderCookieKeys,
 } from "./utils";
 
 /**
@@ -482,6 +484,24 @@ export function defineProtectedRoute<Providers extends OAuthProvider[]>(
 
     return handler(event as H3Event & { context: AugmentedContext<Providers> });
   });
+}
+
+/**
+ * Deletes all cookies for a given OAuth provider.
+ *
+ * This function iterates over all cookie keys for a provider and deletes them
+ * from the incoming `H3Event`'s cookie headers.
+ *
+ * @param event - The H3 event to delete cookies from.
+ * @param provider - The OAuth provider key (e.g., `"clio"`, `"azure"`, `"intuit"`).
+ */
+export function deleteProviderCookies(
+  event: H3Event,
+  provider: OAuthProvider
+): void {
+  for (const cookieName of getProviderCookieKeys(provider)) {
+    deleteCookie(event, cookieName);
+  }
 }
 
 export * from "./types";
