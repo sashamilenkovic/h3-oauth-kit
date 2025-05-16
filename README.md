@@ -1,7 +1,7 @@
 # h3-oauth-kit
 
 [![codecov](https://codecov.io/github/sashamilenkovic/h3-oauth-kit/graph/badge.svg?token=Y4JAJQWYCQ)](https://codecov.io/github/sashamilenkovic/h3-oauth-kit)
-![Run Vitest](https://github.com/sashamilenkovic/h3-oauth-kit/actions/workflows/test.yml/badge.svg)
+![Run Vitest](https://github.com/sashamilenkovic/h3-oauth-kit/actions/workflows/ci.yml/badge.svg)
 
 A type-safe, multi-provider OAuth 2.0 toolkit for H3 apps.
 
