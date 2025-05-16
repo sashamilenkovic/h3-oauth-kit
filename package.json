@@ -56,6 +56,9 @@
   "dependencies": {
     "ofetch": "^1.4.1"
   },
+  "publishConfig": {
+    "registry": "https://registry.npmjs.org/"
+  },
   "license": "MIT",
   "repository": {
     "type": "git",
