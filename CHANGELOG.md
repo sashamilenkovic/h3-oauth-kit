@@ -1,3 +1,10 @@
+# [0.2.0](https://github.com/sashamilenkovic/h3-oauth-kit/compare/v0.1.1...v0.2.0) (2025-05-20)
+
+
+### Features
+
+* allow dynamic provider logout via query params ([f1a23ad](https://github.com/sashamilenkovic/h3-oauth-kit/commit/f1a23ad6ff10278814f00f4c2588323159fb4edb))
+
 ## [0.1.1](https://github.com/sashamilenkovic/h3-oauth-kit/compare/v0.1.0...v0.1.1) (2025-05-16)
 
 
