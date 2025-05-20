@@ -171,6 +171,69 @@ export default defineProtectedRoute(["azure"], async (event) => {
 
 ---
 
+### `handleOAuthLogout(providers, options?, event?)`
+
+- Clears secure HTTP-only cookies for one or more providers.
+- Can be used as a route handler or as a utility in a custom H3 route.
+- Optionally redirects the user after logout, or returns a structured result.
+
+#### Route Handler (with redirect):
+
+```ts
+// server/api/auth/logout.get.ts
+import { handleOAuthLogout } from "@sasha-milenkovic/h3-oauth-kit";
+
+export default handleOAuthLogout(["azure", "clio"], {
+  redirectTo: "/login",
+});
+```
+
+#### Utility Usage (e.g., inside a custom route handler)
+
+```ts
+import { defineEventHandler } from "h3";
+import { handleOAuthLogout } from "@sasha-milenkovic/h3-oauth-kit";
+
+export default defineEventHandler(async (event) => {
+  const result = await handleOAuthLogout(["azure"], {}, event);
+
+  return {
+    message: "User logged out",
+    ...result,
+  };
+});
+```
+
+### Dynamic Usage (providers via query param)
+
+```ts
+// server/api/auth/logout.get.ts
+import { defineEventHandler, getQuery } from "h3";
+import { handleOAuthLogout } from "@sasha-milenkovic/h3-oauth-kit";
+
+export default defineEventHandler((event) => {
+  const { providers } = getQuery(event);
+
+  const providersArray = Array.isArray(providers)
+    ? providers
+    : [providers].filter(Boolean);
+
+  if (!providersArray.length) {
+    throw createError({
+      statusCode: 400,
+      statusMessage: "Missing or invalid 'providers' query parameter",
+    });
+  }
+
+  return handleOAuthLogout(providersArray, { redirectTo: "/login" }, event);
+});
+```
+
+💡 Supports query strings like:
+/api/auth/logout?providers=azure&providers=clio
+
+---
+
 ## Tokens & Cookies
 
 - Access tokens stored in: `*_access_token`
