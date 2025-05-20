@@ -350,6 +350,17 @@ function setProviderCookieFields(event, tokens, provider, baseOptions) {
     }
   }
 }
+function getProviderCookieKeys(provider) {
+  const base = [
+    `${provider}_access_token`,
+    `${provider}_refresh_token`,
+    `${provider}_access_token_expires_at`
+  ];
+  const specific = providerConfig[provider].providerSpecificFields.map(
+    (field) => typeof field === "string" ? `${provider}_${field}` : field.cookieName ?? `${provider}_${String(field.key)}`
+  );
+  return [...base, ...specific];
+}
 function resolveProviderFieldMeta(provider) {
   const fields = providerConfig[provider].providerSpecificFields;
   return fields.flatMap((field) => {
@@ -548,5 +559,25 @@ function defineProtectedRoute(providers, handler, options) {
     return handler(event);
   });
 }
+function deleteProviderCookies(event, provider) {
+  for (const cookieName of getProviderCookieKeys(provider)) {
+    deleteCookie(event, cookieName);
+  }
+}
+function handleOAuthLogout(providers, options, event) {
+  const handler = async (evt) => {
+    for (const provider of providers) {
+      deleteProviderCookies(evt, provider);
+    }
+    if (options?.redirectTo) {
+      await sendRedirect(evt, options.redirectTo, 302);
+    }
+    return {
+      loggedOut: true,
+      providers
+    };
+  };
+  return event ? handler(event) : defineEventHandler(handler);
+}
 
-export { defineProtectedRoute, getOAuthProviderConfig, handleOAuthCallback, handleOAuthLogin, providerRegistry, registerOAuthProvider };
+export { defineProtectedRoute, deleteProviderCookies, getOAuthProviderConfig, handleOAuthCallback, handleOAuthLogin, handleOAuthLogout, providerRegistry, registerOAuthProvider };

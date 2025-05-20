@@ -504,4 +504,67 @@ export function deleteProviderCookies(
   }
 }
 
+/**
+ * Handles logging out from one or more OAuth providers by clearing their associated cookies.
+ *
+ * Can be used in two ways:
+ *
+ * 1. As a route handler:
+ *    ```ts
+ *    export default handleOAuthLogout(["azure", "clio"]);
+ *    ```
+ *
+ * 2. As a utility inside a custom route:
+ *    ```ts
+ *    await handleOAuthLogout(["clio"], {}, event);
+ *    ```
+ *
+ * If `redirectTo` is provided, the user is redirected after logout.
+ * Otherwise, a structured JSON response is returned indicating which providers were logged out.
+ *
+ * @param providers - An array of OAuth provider identifiers (e.g., `"azure"`, `"clio"`).
+ * @param options.redirectTo - Optional redirect path to send the user to after logout.
+ * @param event - Optional H3Event, required when calling this as a utility.
+ *
+ * @returns An `EventHandler` when used as a route.
+ *          A structured logout result or redirect when used as a utility.
+ */
+
+export function handleOAuthLogout(providers: OAuthProvider[]): EventHandler;
+export function handleOAuthLogout(
+  providers: OAuthProvider[],
+  options: { redirectTo?: string }
+): EventHandler;
+
+export function handleOAuthLogout(
+  providers: OAuthProvider[],
+  options: { redirectTo?: string },
+  event: H3Event
+): Promise<{ loggedOut: true; providers: OAuthProvider[] }> | Promise<void>;
+
+export function handleOAuthLogout(
+  providers: OAuthProvider[],
+  options?: { redirectTo?: string },
+  event?: H3Event
+):
+  | EventHandler
+  | Promise<{ loggedOut: true; providers: OAuthProvider[] } | void> {
+  const handler = async (evt: H3Event) => {
+    for (const provider of providers) {
+      deleteProviderCookies(evt, provider);
+    }
+
+    if (options?.redirectTo) {
+      await sendRedirect(evt, options.redirectTo, 302);
+    }
+
+    return {
+      loggedOut: true,
+      providers,
+    } as const;
+  };
+
+  return event ? handler(event) : defineEventHandler(handler);
+}
+
 export * from "./types";
