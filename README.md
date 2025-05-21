@@ -41,6 +41,26 @@ pnpm add @sasha-milenkovic/h3-oauth-kit
 
 ---
 
+## Environment Variables
+
+To enable secure encryption of refresh tokens, you must define the following environment variable:
+
+```bash
+H3_OAUTH_ENCRYPTION_KEY=your_64_char_hex_string
+```
+
+This must be a 64-character hex string, which corresponds to a 32-byte encryption key for AES-256-CBC.
+
+You can generate a key using Node.js:
+
+```ts
+crypto.randomBytes(32).toString("hex");
+```
+
+⚠️ H3_OAUTH_ENCRYPTION_KEY is required. If it’s missing or invalid, the package will throw an error at runtime.
+
+---
+
 ## API Overview
 
 ### `registerOAuthProvider(provider, confg)`
