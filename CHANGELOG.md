@@ -1,3 +1,10 @@
+# [0.3.0](https://github.com/sashamilenkovic/h3-oauth-kit/compare/v0.2.0...v0.3.0) (2025-05-21)
+
+
+### Features
+
+* encrypt refresh tokens before setting cookies ([6eb1304](https://github.com/sashamilenkovic/h3-oauth-kit/commit/6eb13041bb39d0e84b6d865ffa9ca4654e0aaeed))
+
 # [0.2.0](https://github.com/sashamilenkovic/h3-oauth-kit/compare/v0.1.1...v0.2.0) (2025-05-20)
 
 
