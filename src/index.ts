@@ -298,8 +298,6 @@ export function handleOAuthCallback<P extends OAuthProvider>(
 
       const rawTokens = await exchangeCodeForTokens(code, config, provider);
 
-      const callbackQueryData = parseOAuthCallbackQuery(evt, provider);
-
       const tokens = setProviderCookies(
         evt,
         rawTokens,
@@ -310,6 +308,8 @@ export function handleOAuthCallback<P extends OAuthProvider>(
       const redirectTo = options?.redirectTo || "/";
 
       if (options?.redirect === false) {
+        const callbackQueryData = parseOAuthCallbackQuery(evt, provider);
+
         return { tokens, state: parsedState, callbackQueryData };
       }
 

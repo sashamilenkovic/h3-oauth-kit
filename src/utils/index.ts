@@ -13,12 +13,12 @@ import type {
   BaseOAuthCallbackQuery,
   ProviderFieldValue,
   TokenField,
-  OAuthErrorResponse,
-} from "./types";
+} from "../types";
 
 import { setCookie, getCookie, deleteCookie, getQuery, createError } from "h3";
-import { providerConfig } from "./providerConfig";
+import { providerConfig } from "../providerConfig";
 import { ofetch } from "ofetch";
+import { encrypt, decrypt } from "./encryption";
 
 /**
  * Performs a deep equality check between two values of the same type.
@@ -120,7 +120,9 @@ export function setProviderCookies<P extends OAuthProvider>(
   setCookie(event, `${provider}_access_token_expires_at`, String(expiry), base);
 
   if (tokens.refresh_token) {
-    setCookie(event, `${provider}_refresh_token`, tokens.refresh_token, {
+    const encryptedRefreshToken = encrypt(tokens.refresh_token);
+
+    setCookie(event, `${provider}_refresh_token`, encryptedRefreshToken, {
       ...base,
       maxAge: 30 * 24 * 60 * 60,
     });
@@ -654,11 +656,17 @@ export async function oAuthTokensAreValid<P extends OAuthProvider>(
 
   if (!access_token || !refresh_token || !access_token_expires_at) return false;
 
+  const encryptedRefreshToken = decrypt(refresh_token);
+
   const expires_in = parseInt(access_token_expires_at, 10);
   const now = Math.floor(Date.now() / 1000);
   const isAccessTokenExpired = now >= expires_in;
 
-  const base = { access_token, refresh_token, expires_in };
+  const base = {
+    access_token,
+    refresh_token: encryptedRefreshToken,
+    expires_in,
+  };
 
   // Optionally validate refresh token expiry
   if (providerConfig[provider].validateRefreshTokenExpiry) {

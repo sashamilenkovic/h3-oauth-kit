@@ -238,6 +238,7 @@ async function refreshToken(refreshTokenValue, providerConfig2, _provider) {
       grant_type: "refresh_token"
     }
   };
+  console.log("requestConfig", requestConfig);
   try {
     const tokenResponse = await ofetch(
       requestConfig.url,
@@ -252,6 +253,7 @@ async function refreshToken(refreshTokenValue, providerConfig2, _provider) {
     return tokenResponse;
   } catch (error) {
     const { statusCode, message } = await parseError(error);
+    console.log("refresh token error", error);
     throw createError({ statusCode, message });
   }
 }
@@ -478,13 +480,16 @@ function defineProtectedRoute(providers, handler, options) {
     const ctx = event.context;
     ctx.h3OAuthKit = {};
     for (const provider of providers) {
+      console.log("provider", provider);
       try {
         const result = await oAuthTokensAreValid(event, provider);
+        console.log("result", result);
         if (!result) {
           const error = createError({
             statusCode: 401,
             message: `Missing or invalid tokens for "${provider}"`
           });
+          console.log("error", error);
           if (options?.onAuthFailure) {
             const response = await options.onAuthFailure(
               event,
@@ -498,12 +503,14 @@ function defineProtectedRoute(providers, handler, options) {
         }
         let tokens = result.tokens;
         if (result.status === "expired") {
+          console.log("result is expired", result);
           const config = getOAuthProviderConfig(provider);
           const refreshed = await refreshToken(
             result.tokens.refresh_token,
             config,
             provider
           );
+          console.log("refreshed", refreshed);
           if (!refreshed) {
             const error = createError({
               statusCode: 401,

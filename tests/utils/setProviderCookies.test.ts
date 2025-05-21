@@ -5,6 +5,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { setProviderCookies } from "../../src/utils";
 import { createMockEvent } from "../utils";
 import { providerConfig } from "../../src/providerConfig";
+import { decrypt } from "../../src/utils/encryption";
 
 // 👇️ Mock `setCookie` from the `h3` module before import
 vi.mock("h3", async () => {
@@ -31,7 +32,7 @@ const cases = [
       ["clio_access_token", "abc123"],
       ["clio_refresh_token", "refresh123"],
       ["clio_access_token_expires_at", expect.any(String)],
-      ["clio_token_type", "bearer"], // ✅ covers typeof field === "string"
+      ["clio_token_type", "bearer"],
     ],
   },
   {
@@ -74,13 +75,10 @@ describe("setProviderCookies", () => {
 
   beforeEach(() => {
     (setCookie as unknown as Mock).mockClear();
-
-    // Ensure Clio includes a simple string-based field
     providerConfig.clio.providerSpecificFields = ["token_type"];
   });
 
   afterEach(() => {
-    // Restore original config to avoid side effects
     providerConfig.clio.providerSpecificFields = originalClioFields;
   });
 
@@ -108,6 +106,9 @@ describe("setProviderCookies", () => {
             ? originalToken.slice(7)
             : originalToken;
           expect(cookie?.value).toEqual(stripped);
+        } else if (expectedName.endsWith("_refresh_token")) {
+          expect(typeof cookie?.value).toBe("string");
+          expect(decrypt(cookie!.value)).toEqual(expectedValue);
         } else {
           expect(cookie?.value).toEqual(expectedValue);
         }
@@ -156,7 +157,7 @@ describe("setProviderCookies", () => {
     const event = createMockEvent();
 
     const tokens = {
-      access_token: "abc123", // 👈 no Bearer prefix
+      access_token: "abc123",
       refresh_token: "refresh123",
       token_type: "bearer" as const,
       expires_in: 3600,

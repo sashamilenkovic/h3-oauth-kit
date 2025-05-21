@@ -1,6 +1,7 @@
 import type { H3Event } from "h3";
 import { IncomingMessage, ServerResponse } from "node:http";
 import { createEvent } from "h3";
+import { encrypt } from "../src/utils/encryption";
 
 /**
  * Creates a mock H3Event for unit testing.
@@ -28,4 +29,18 @@ export function createMockEvent(options?: {
 
   const res = new ServerResponse(req);
   return createEvent(req, res);
+}
+
+/**
+ * Test helper: Encrypts the provider's refresh token while preserving type structure.
+ */
+export function withEncryptedRefreshToken<
+  P extends string,
+  T extends Record<string, any> // ⬅️ changed from string to any
+>(provider: P, tokens: T): T {
+  const key = `${provider}_refresh_token` as keyof T;
+  return {
+    ...tokens,
+    [key]: encrypt(tokens[key] as string),
+  };
 }
