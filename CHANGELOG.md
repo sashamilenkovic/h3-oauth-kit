@@ -1,3 +1,10 @@
+## [0.4.1](https://github.com/sashamilenkovic/h3-oauth-kit/compare/v0.4.0...v0.4.1) (2025-05-26)
+
+
+### Bug Fixes
+
+* fixes issue where provider key was used in place of instance key when setting provider cookies ([ac07ade](https://github.com/sashamilenkovic/h3-oauth-kit/commit/ac07ade9bb366f9e019616a546217f42c4ffba6a))
+
 # [0.4.0](https://github.com/sashamilenkovic/h3-oauth-kit/compare/v0.3.0...v0.4.0) (2025-05-26)
 
 
