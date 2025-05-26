@@ -439,6 +439,9 @@ describe('handleOAuthCallback as route handler', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     registerOAuthProvider('clio', config);
+
+    // Reset setProviderCookies mock to default behavior
+    mockSetProviderCookies.mockImplementation((_, tokens) => tokens);
   });
 
   it('functions as a route handler and performs redirect (event initially undefined)', async () => {
