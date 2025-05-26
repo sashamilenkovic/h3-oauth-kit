@@ -46,7 +46,7 @@ function mockOAuthStateCookie(providerKey: string, csrfValue: string) {
   );
 }
 
-describe.only('handleOAuthCallback', () => {
+describe('handleOAuthCallback', () => {
   const config = {
     clientId: 'test-client-id',
     clientSecret: 'test-secret',

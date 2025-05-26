@@ -54,7 +54,7 @@ This must be a 64-character hex string, which corresponds to a 32-byte encryptio
 You can generate a key using Node.js:
 
 ```ts
-crypto.randomBytes(32).toString("hex");
+crypto.randomBytes(32).toString('hex');
 ```
 
 ⚠️ H3_OAUTH_ENCRYPTION_KEY is required. If it’s missing or invalid, the package will throw an error at runtime.
@@ -63,55 +63,117 @@ crypto.randomBytes(32).toString("hex");
 
 ## API Overview
 
-### `registerOAuthProvider(provider, confg)`
+### `registerOAuthProvider(provider, config)` / `registerOAuthProvider(provider, instanceKey, config)`
+
+Registers an OAuth provider configuration. Supports both **global** and **scoped** (multi-tenant) configurations.
+
+#### Global Registration (Single-Tenant)
 
 ```ts
-import { registerOAuthProvider } from "@sasha-milenkovic/h3-oauth-kit";
+import { registerOAuthProvider } from '@sasha-milenkovic/h3-oauth-kit';
 
-registerOAuthProvider("azure", {
-  clientId: "YOUR_CLIENT_ID",
-  clientSecret: "YOUR_CLIENT_SECRET",
-  redirectUri: "http://localhost:3000/api/auth/azure/callback",
-  tokenEndpoint: "https://login.microsoftonline.com/common/oauth2/v2.0/token",
+registerOAuthProvider('azure', {
+  clientId: 'YOUR_CLIENT_ID',
+  clientSecret: 'YOUR_CLIENT_SECRET',
+  redirectUri: 'http://localhost:3000/api/auth/azure/callback',
+  tokenEndpoint: 'https://login.microsoftonline.com/common/oauth2/v2.0/token',
   authorizeEndpoint:
-    "https://login.microsoftonline.com/common/oauth2/v2.0/authorize",
-  scopes: ["openid", "profile", "email"],
+    'https://login.microsoftonline.com/common/oauth2/v2.0/authorize',
+  scopes: ['openid', 'profile', 'email'],
+});
+```
+
+#### Scoped Registration (Multi-Tenant)
+
+For multi-tenant applications, you can register multiple configurations for the same provider using an `instanceKey`:
+
+```ts
+// Register different Azure configurations for different tenants
+registerOAuthProvider('azure', 'tenant-a', {
+  clientId: 'TENANT_A_CLIENT_ID',
+  clientSecret: 'TENANT_A_CLIENT_SECRET',
+  redirectUri: 'http://localhost:3000/api/auth/azure/callback',
+  tokenEndpoint: 'https://login.microsoftonline.com/tenant-a/oauth2/v2.0/token',
+  authorizeEndpoint:
+    'https://login.microsoftonline.com/tenant-a/oauth2/v2.0/authorize',
+  scopes: ['openid', 'profile', 'email'],
+});
+
+registerOAuthProvider('azure', 'tenant-b', {
+  clientId: 'TENANT_B_CLIENT_ID',
+  clientSecret: 'TENANT_B_CLIENT_SECRET',
+  redirectUri: 'http://localhost:3000/api/auth/azure/callback',
+  tokenEndpoint: 'https://login.microsoftonline.com/tenant-b/oauth2/v2.0/token',
+  authorizeEndpoint:
+    'https://login.microsoftonline.com/tenant-b/oauth2/v2.0/authorize',
+  scopes: ['openid', 'profile', 'email'],
+});
+
+// Or register different Clio configurations for different law firms
+registerOAuthProvider('clio', 'smithlaw', {
+  clientId: 'SMITHLAW_CLIENT_ID',
+  clientSecret: 'SMITHLAW_CLIENT_SECRET',
+  // ... other config
+});
+
+registerOAuthProvider('clio', 'johnsonlegal', {
+  clientId: 'JOHNSONLEGAL_CLIENT_ID',
+  clientSecret: 'JOHNSONLEGAL_CLIENT_SECRET',
+  // ... other config
 });
 ```
 
 ---
 
-### `handleOAuthLogin(provider, options?, event?)`
+### `handleOAuthLogin(provider, options?, event?)` / `handleOAuthLogin(provider, instanceKey, options?, event?)`
 
 - Can be used as a route handler or utility.
 - Supports automatic or manual redirection.
+- Supports both global and scoped (multi-tenant) provider configurations.
 - If state is not provided, a unique identifier is automatically generated.
 
-#### Route Handler (redirects immediately):
+#### Global Provider Usage
 
 ```ts
-export default handleOAuthLogin("azure", { redirect: true });
+// Route Handler (redirects immediately)
+export default handleOAuthLogin('azure', { redirect: true });
+
+// Utility Usage (returns URL for manual redirect)
+const { url } = await handleOAuthLogin('azure', {}, event);
 ```
 
-#### Utility Usage (e.g. to customize redirect)
+#### Scoped Provider Usage (Multi-Tenant)
 
 ```ts
-import { defineEventHandler, getQuery } from "h3";
-import { handleOAuthLogin } from "@sasha-milenkovic/h3-oauth-kit";
+// Route Handler for specific tenant
+export default handleOAuthLogin('azure', 'tenant-a', { redirect: true });
+
+// Utility Usage for specific law firm
+const { url } = await handleOAuthLogin('clio', 'smithlaw', {}, event);
+```
+
+#### Advanced Usage with Custom State
+
+```ts
+import { defineEventHandler, getQuery } from 'h3';
+import { handleOAuthLogin } from '@sasha-milenkovic/h3-oauth-kit';
 
 export default defineEventHandler(async (event) => {
+  const { tenant } = getQuery(event);
+
   return await handleOAuthLogin(
-    "azure",
+    'azure',
+    tenant as string, // Use dynamic instanceKey
     {
       state: (event) => {
         const { redirectTo } = getQuery(event);
         return {
-          redirectTo: redirectTo ?? "/",
+          redirectTo: redirectTo ?? '/',
           requestId: crypto.randomUUID(),
         };
       },
     },
-    event
+    event,
   );
 });
 ```
@@ -122,31 +184,36 @@ export default defineEventHandler(async (event) => {
 
 - Exchanges code for tokens, verifies state, and stores tokens in cookies.
 - Can auto-redirect or return structured result.
+- **Automatically detects scoped providers** from the state parameter (no need to pass instanceKey manually).
 
 #### Route Handler (with redirect):
 
 ```ts
-export default handleOAuthCallback("azure", {
-  redirectTo: "/dashboard",
+// Works for both global and scoped providers
+export default handleOAuthCallback('azure', {
+  redirectTo: '/dashboard',
 });
 ```
 
 #### Utility Usage (custom logic after callback):
 
-This example demonstrates how to handle the callback, where `state` represents the data passed during login (or the state provided by the OAuth provider), and `callbackQueryData` contains additional data returned by the provider:
+This example demonstrates how to handle the callback, where `state` represents the data passed during login (including `instanceKey` for scoped providers), and `callbackQueryData` contains additional data returned by the provider:
 
 ```ts
-import { defineEventHandler, sendRedirect } from "h3";
-import { handleOAuthCallback } from "@sasha-milenkovic/h3-oauth-kit";
+import { defineEventHandler, sendRedirect } from 'h3';
+import { handleOAuthCallback } from '@sasha-milenkovic/h3-oauth-kit';
 
 export default defineEventHandler(async (event) => {
   const { state, callbackQueryData } = await handleOAuthCallback(
-    "azure",
+    'azure',
     { redirect: false },
-    event
+    event,
   );
 
-  return sendRedirect(event, state.redirectTo || "/");
+  // state.instanceKey will contain the tenant/instance info if it was a scoped login
+  console.log('Instance:', state.instanceKey); // e.g., "tenant-a" or undefined
+
+  return sendRedirect(event, state.redirectTo || '/');
 });
 ```
 
@@ -158,17 +225,15 @@ export default defineEventHandler(async (event) => {
 - Automatically checks cookie presence and token freshness.
 - If expired, the access token is refreshed (if possible).
 - If tokens are missing or invalid, a `401` is returned.
-- Injects validated token data into `event.context`, including:
+- **Supports both global and scoped (multi-tenant) providers**.
+- Injects validated token data into `event.context.h3OAuthKit` with type-safe provider keys.
 
-  - `event.context.azure_access_token` (just the access token)
-  - `event.context.h3OAuthKit.azure` (full token structure, strongly typed)
-
-#### Example:
+#### Global Provider Example:
 
 ```ts
-import { defineProtectedRoute } from "@sasha-milenkovic/h3-oauth-kit";
+import { defineProtectedRoute } from '@sasha-milenkovic/h3-oauth-kit';
 
-export default defineProtectedRoute(["azure"], async (event) => {
+export default defineProtectedRoute(['azure'], async (event) => {
   const token = event.context.h3OAuthKit.azure.access_token;
 
   try {
@@ -178,14 +243,61 @@ export default defineProtectedRoute(["azure"], async (event) => {
       },
     });
   } catch (error) {
-    console.error("Error fetching azure user profile:", error);
-
+    console.error('Error fetching azure user profile:', error);
     throw error;
   }
 });
 ```
 
-> 💡 This is especially powerful because all tokens are type-safe — you get full IntelliSense and validation for each provider's token fields.
+#### Scoped Provider Example (Multi-Tenant):
+
+```ts
+import { defineProtectedRoute } from '@sasha-milenkovic/h3-oauth-kit';
+
+export default defineProtectedRoute(
+  [
+    { provider: 'azure', instanceKey: 'tenant-a' },
+    { provider: 'clio', instanceKey: 'smithlaw' },
+  ],
+  async (event) => {
+    // Access tokens for specific instances (note the bracket notation for scoped keys)
+    const azureToken = event.context.h3OAuthKit['azure:tenant-a'].access_token;
+    const clioToken = event.context.h3OAuthKit['clio:smithlaw'].access_token;
+
+    // Make API calls with instance-specific tokens
+    const [azureProfile, clioUser] = await Promise.all([
+      $fetch('https://graph.microsoft.com/v1.0/me', {
+        headers: { Authorization: `Bearer ${azureToken}` },
+      }),
+      $fetch('https://app.clio.com/api/v4/users/who_am_i.json', {
+        headers: { Authorization: `Bearer ${clioToken}` },
+      }),
+    ]);
+
+    return { azureProfile, clioUser };
+  },
+);
+```
+
+#### Mixed Global and Scoped Providers:
+
+```ts
+export default defineProtectedRoute(
+  [
+    'azure', // Global azure config
+    { provider: 'clio', instanceKey: 'smithlaw' }, // Scoped clio config
+  ],
+  async (event) => {
+    const globalAzureToken = event.context.h3OAuthKit.azure.access_token;
+    const scopedClioToken =
+      event.context.h3OAuthKit['clio:smithlaw'].access_token;
+
+    // Use both tokens...
+  },
+);
+```
+
+> 💡 This is especially powerful because all tokens are type-safe — you get full IntelliSense and validation for each provider's token fields, and the context keys automatically reflect whether you're using global (`azure`) or scoped (`azure:tenant-a`) providers.
 
 ---
 
@@ -193,30 +305,61 @@ export default defineProtectedRoute(["azure"], async (event) => {
 
 - Clears secure HTTP-only cookies for one or more providers.
 - Can be used as a route handler or as a utility in a custom H3 route.
+- **Supports both global and scoped (multi-tenant) providers**.
 - Optionally redirects the user after logout, or returns a structured result.
 
-#### Route Handler (with redirect):
+#### Global Providers:
 
 ```ts
 // server/api/auth/logout.get.ts
-import { handleOAuthLogout } from "@sasha-milenkovic/h3-oauth-kit";
+import { handleOAuthLogout } from '@sasha-milenkovic/h3-oauth-kit';
 
-export default handleOAuthLogout(["azure", "clio"], {
-  redirectTo: "/login",
+export default handleOAuthLogout(['azure', 'clio'], {
+  redirectTo: '/login',
 });
+```
+
+#### Scoped Providers (Multi-Tenant):
+
+```ts
+// Logout specific tenant/instance combinations
+export default handleOAuthLogout(
+  [
+    { provider: 'azure', instanceKey: 'tenant-a' },
+    { provider: 'clio', instanceKey: 'smithlaw' },
+  ],
+  {
+    redirectTo: '/login',
+  },
+);
+```
+
+#### Mixed Global and Scoped:
+
+```ts
+// Logout global azure + scoped clio
+export default handleOAuthLogout(
+  [
+    'azure', // Global
+    { provider: 'clio', instanceKey: 'smithlaw' }, // Scoped
+  ],
+  {
+    redirectTo: '/login',
+  },
+);
 ```
 
 #### Utility Usage (e.g., inside a custom route handler)
 
 ```ts
-import { defineEventHandler } from "h3";
-import { handleOAuthLogout } from "@sasha-milenkovic/h3-oauth-kit";
+import { defineEventHandler } from 'h3';
+import { handleOAuthLogout } from '@sasha-milenkovic/h3-oauth-kit';
 
 export default defineEventHandler(async (event) => {
-  const result = await handleOAuthLogout(["azure"], {}, event);
+  const result = await handleOAuthLogout(['azure'], {}, event);
 
   return {
-    message: "User logged out",
+    message: 'User logged out',
     ...result,
   };
 });
@@ -226,8 +369,8 @@ export default defineEventHandler(async (event) => {
 
 ```ts
 // server/api/auth/logout.get.ts
-import { defineEventHandler, getQuery } from "h3";
-import { handleOAuthLogout } from "@sasha-milenkovic/h3-oauth-kit";
+import { defineEventHandler, getQuery } from 'h3';
+import { handleOAuthLogout } from '@sasha-milenkovic/h3-oauth-kit';
 
 export default defineEventHandler((event) => {
   const { providers } = getQuery(event);
@@ -243,12 +386,46 @@ export default defineEventHandler((event) => {
     });
   }
 
-  return handleOAuthLogout(providersArray, { redirectTo: "/login" }, event);
+  return handleOAuthLogout(providersArray, { redirectTo: '/login' }, event);
 });
 ```
 
 💡 Supports query strings like:
 /api/auth/logout?providers=azure&providers=clio
+
+---
+
+## Multi-Tenant Key Format
+
+When using scoped providers (multi-tenant), the keys follow a specific format:
+
+### Context Access Patterns
+
+```ts
+// Global providers - use dot notation
+event.context.h3OAuthKit.azure.access_token;
+event.context.h3OAuthKit.clio.access_token;
+
+// Scoped providers - use bracket notation (because of the colon)
+event.context.h3OAuthKit['azure:tenant-a'].access_token;
+event.context.h3OAuthKit['clio:smithlaw'].access_token;
+event.context.h3OAuthKit['intuit:company-123'].access_token;
+```
+
+### Cookie Names
+
+Cookies follow the same pattern:
+
+```ts
+// Global providers
+azure_access_token
+clio_refresh_token
+
+// Scoped providers
+azure:tenant-a_access_token
+clio:smithlaw_refresh_token
+intuit:company-123_access_token_expires_at
+```
 
 ---
 
