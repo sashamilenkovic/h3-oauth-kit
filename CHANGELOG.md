@@ -1,3 +1,10 @@
+# [0.4.0](https://github.com/sashamilenkovic/h3-oauth-kit/compare/v0.3.0...v0.4.0) (2025-05-26)
+
+
+### Features
+
+* adds multi-tenant support ([275bc3c](https://github.com/sashamilenkovic/h3-oauth-kit/commit/275bc3c28e7c2f6db3d83b382727d0bcf6d114d8))
+
 # [0.3.0](https://github.com/sashamilenkovic/h3-oauth-kit/compare/v0.2.0...v0.3.0) (2025-05-21)
 
 
