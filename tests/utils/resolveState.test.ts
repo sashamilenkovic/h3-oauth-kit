@@ -3,6 +3,7 @@ import { resolveState } from "../../src/utils";
 import { createMockEvent } from "../utils";
 import { setCookie } from "h3";
 
+// Mock `setCookie` from `h3`
 vi.mock("h3", async () => {
   const actual = await vi.importActual<typeof import("h3")>("h3");
   return {
@@ -14,81 +15,99 @@ vi.mock("h3", async () => {
 const mockedSetCookie = setCookie as unknown as ReturnType<typeof vi.fn>;
 
 describe("resolveState", () => {
-  const provider = "clio";
+  const providerKey = "clio";
 
   beforeEach(() => {
     mockedSetCookie.mockReset();
   });
 
-  it("uses a static string state", () => {
+  it("encodes a CSRF-protected base64url JSON object when no user state is provided", () => {
     const event = createMockEvent();
-    const result = resolveState(event, provider, "custom-state");
 
-    expect(result).toBe("custom-state");
+    const encoded = resolveState(event, providerKey);
+
+    const decoded = JSON.parse(
+      Buffer.from(decodeURIComponent(encoded), "base64url").toString(),
+    );
+
+    expect(decoded).toMatchObject({
+      csrf: expect.any(String),
+      providerKey: "clio",
+    });
+
+    expect(decoded.csrf).toHaveLength(36); // UUID v4
+
     expect(mockedSetCookie).toHaveBeenCalledWith(
       event,
-      "clio_oauth_state",
-      "custom-state",
+      "oauth_csrf_clio",
+      decoded.csrf,
       expect.objectContaining({
         httpOnly: true,
         sameSite: "lax",
         secure: true,
         path: "/",
         maxAge: 300,
-      })
+      }),
     );
   });
 
-  it("serializes an object to JSON", () => {
+  it("includes custom static state in encoded payload", () => {
     const event = createMockEvent();
-    const result = resolveState(event, provider, { from: "/dashboard" });
 
-    expect(result).toBe(JSON.stringify({ from: "/dashboard" }));
-    expect(mockedSetCookie).toHaveBeenCalledWith(
-      event,
-      "clio_oauth_state",
-      JSON.stringify({ from: "/dashboard" }),
-      expect.any(Object)
+    const encoded = resolveState(event, providerKey, {
+      returnTo: "/dashboard",
+    });
+
+    const decoded = JSON.parse(
+      Buffer.from(decodeURIComponent(encoded), "base64url").toString(),
+    );
+
+    expect(decoded).toMatchObject({
+      csrf: expect.any(String),
+      providerKey: "clio",
+      returnTo: "/dashboard",
+    });
+  });
+
+  it("resolves userState when passed a function", () => {
+    const event = createMockEvent();
+
+    const encoded = resolveState(event, providerKey, () => ({
+      from: "/settings",
+    }));
+
+    const decoded = JSON.parse(
+      Buffer.from(decodeURIComponent(encoded), "base64url").toString(),
+    );
+
+    expect(decoded).toMatchObject({
+      csrf: expect.any(String),
+      providerKey: "clio",
+      from: "/settings",
+    });
+  });
+
+  it("throws if state is not an object or function", () => {
+    const event = createMockEvent();
+
+    expect(() => resolveState(event, providerKey, "not-valid" as any)).toThrow(
+      /must be a plain object/,
     );
   });
 
-  it("resolves a function that returns a string", () => {
+  it("throws if state resolves to an array", () => {
     const event = createMockEvent();
-    const result = resolveState(event, provider, () => "dynamic-state");
 
-    expect(result).toBe("dynamic-state");
-    expect(mockedSetCookie).toHaveBeenCalledWith(
-      event,
-      "clio_oauth_state",
-      "dynamic-state",
-      expect.any(Object)
-    );
+    expect(() =>
+      resolveState(event, providerKey, () => ["bad"] as any),
+    ).toThrow(/must be a plain object/);
   });
 
-  it("resolves a function that returns an object", () => {
+  it("throws if state resolves to null", () => {
     const event = createMockEvent();
-    const result = resolveState(event, provider, () => ({ from: "/settings" }));
 
-    expect(result).toBe(JSON.stringify({ from: "/settings" }));
-    expect(mockedSetCookie).toHaveBeenCalledWith(
-      event,
-      "clio_oauth_state",
-      JSON.stringify({ from: "/settings" }),
-      expect.any(Object)
-    );
-  });
-
-  it("generates a UUID when no state is provided", () => {
-    const event = createMockEvent();
-    const result = resolveState(event, provider);
-
-    expect(typeof result).toBe("string");
-    expect(result).toHaveLength(36); // UUID v4 length
-    expect(mockedSetCookie).toHaveBeenCalledWith(
-      event,
-      "clio_oauth_state",
-      result,
-      expect.any(Object)
+    expect(() => resolveState(event, providerKey, () => null as any)).toThrow(
+      /must be a plain object/,
     );
   });
 });

@@ -1,10 +1,9 @@
-import type { H3Event } from "h3";
+import type { H3Event } from 'h3';
 import type {
   OAuthProvider,
   OAuthProviderTokenMap,
   CookieOptionsOverride,
   OAuthErrorResponse,
-  OAuthParsedState,
   OAuthStateValue,
   RefreshTokenResponse,
   TokenValidationResult,
@@ -13,64 +12,13 @@ import type {
   BaseOAuthCallbackQuery,
   ProviderFieldValue,
   TokenField,
-} from "../types";
+  OAuthParsedState,
+} from '../types';
 
-import { setCookie, getCookie, deleteCookie, getQuery, createError } from "h3";
-import { providerConfig } from "../providerConfig";
-import { ofetch } from "ofetch";
-import { encrypt, decrypt } from "./encryption";
-
-/**
- * Performs a deep equality check between two values of the same type.
- *
- * This function recursively compares objects, arrays, and primitives to determine
- * if the two values are structurally and deeply equal. It is designed to work
- * with JSON-serializable data (i.e., no functions, symbols, Dates, Maps, Sets, etc.).
- *
- * @typeParam T - The type of the values being compared.
- * @param a - The first value to compare.
- * @param b - The second value to compare.
- *
- * @returns `true` if the values are deeply equal, `false` otherwise.
- *
- * @example
- * ```ts
- * deepEqual({ foo: "bar" }, { foo: "bar" }); // true
- * deepEqual([1, 2, 3], [1, 2, 3]); // true
- * deepEqual({ a: 1 }, { a: 1, b: 2 }); // false
- * ```
- */
-export function deepEqual<T>(a: T, b: T): boolean {
-  if (a === b) return true;
-
-  if (typeof a !== typeof b) return false;
-
-  if (a === null || b === null) return a === b;
-
-  if (typeof a !== "object" || typeof b !== "object") return false;
-
-  if (Array.isArray(a) !== Array.isArray(b)) return false;
-
-  if (Array.isArray(a) && Array.isArray(b)) {
-    if (a.length !== b.length) return false;
-    for (let i = 0; i < a.length; i++) {
-      if (!deepEqual(a[i], b[i])) return false;
-    }
-    return true;
-  }
-
-  const keysA = Object.keys(a) as (keyof T)[];
-  const keysB = Object.keys(b) as (keyof T)[];
-
-  if (keysA.length !== keysB.length) return false;
-
-  for (const key of keysA) {
-    if (!(key in b)) return false;
-    if (!deepEqual(a[key], b[key])) return false;
-  }
-
-  return true;
-}
+import { setCookie, getCookie, deleteCookie, getQuery, createError } from 'h3';
+import { providerConfig } from '../providerConfig';
+import { ofetch } from 'ofetch';
+import { encrypt, decrypt } from './encryption';
 
 /**
  * @internal
@@ -98,37 +46,46 @@ export function setProviderCookies<P extends OAuthProvider>(
   event: H3Event,
   tokens: OAuthProviderTokenMap[P],
   provider: P,
-  options?: CookieOptionsOverride
+  options?: CookieOptionsOverride,
+  instanceKey?: string,
 ): OAuthProviderTokenMap[P] {
+  const providerKey = instanceKey ? `${provider}:${instanceKey}` : provider;
+
   const base: Parameters<typeof setCookie>[3] = {
     httpOnly: true,
     secure: true,
-    sameSite: options?.sameSite ?? "lax",
-    path: options?.path ?? "/",
+    sameSite: options?.sameSite ?? 'lax',
+    path: options?.path ?? '/',
   };
 
-  const cleanedAccessToken = tokens.access_token.startsWith("Bearer ")
+  const cleanedAccessToken = tokens.access_token.startsWith('Bearer ')
     ? tokens.access_token.slice(7)
     : tokens.access_token;
 
-  setCookie(event, `${provider}_access_token`, cleanedAccessToken, {
+  setCookie(event, `${providerKey}_access_token`, cleanedAccessToken, {
     ...base,
     maxAge: tokens.expires_in,
   });
 
   const expiry = Math.floor(Date.now() / 1000) + tokens.expires_in;
-  setCookie(event, `${provider}_access_token_expires_at`, String(expiry), base);
+
+  setCookie(
+    event,
+    `${providerKey}_access_token_expires_at`,
+    String(expiry),
+    base,
+  );
 
   if (tokens.refresh_token) {
     const encryptedRefreshToken = encrypt(tokens.refresh_token);
 
-    setCookie(event, `${provider}_refresh_token`, encryptedRefreshToken, {
+    setCookie(event, `${providerKey}_refresh_token`, encryptedRefreshToken, {
       ...base,
-      maxAge: 30 * 24 * 60 * 60,
+      maxAge: 30 * 24 * 60 * 60, // 30 days
     });
   }
 
-  setProviderCookieFields(event, tokens, provider, base);
+  setProviderCookieFields(event, tokens, provider, providerKey, base);
 
   return tokens;
 }
@@ -157,17 +114,17 @@ export async function parseError(error: unknown): Promise<{
   message: string;
 }> {
   let statusCode = 500;
-  let message = "h3-oauth-kit error";
+  let message = 'h3-oauth-kit error';
 
   // Step 1: Check for `response.status` and `response.json()`
   if (isFetchErrorWithResponse(error)) {
     const response = error.response;
 
-    if (typeof response.status === "number") {
+    if (typeof response.status === 'number') {
       statusCode = response.status;
     }
 
-    if (typeof response.json === "function") {
+    if (typeof response.json === 'function') {
       try {
         const json = await response.json();
         if (isOAuthErrorResponse(json)) {
@@ -180,7 +137,7 @@ export async function parseError(error: unknown): Promise<{
   }
 
   // Step 2: Fallback to top-level `error.message` if message is still default
-  if (message === "h3-oauth-kit error" && isErrorWithMessage(error)) {
+  if (message === 'h3-oauth-kit error' && isErrorWithMessage(error)) {
     message = error.message;
   }
 
@@ -202,13 +159,13 @@ function isFetchErrorWithResponse(error: unknown): error is {
     json?: () => Promise<unknown>;
   };
 } {
-  if (typeof error === "object" && error !== null && "response" in error) {
+  if (typeof error === 'object' && error !== null && 'response' in error) {
     const maybeResponse = (error as { response: unknown }).response;
 
     return (
-      typeof maybeResponse === "object" &&
+      typeof maybeResponse === 'object' &&
       maybeResponse !== null &&
-      ("status" in maybeResponse || "json" in maybeResponse)
+      ('status' in maybeResponse || 'json' in maybeResponse)
     );
   }
 
@@ -226,9 +183,9 @@ function isFetchErrorWithResponse(error: unknown): error is {
  */
 function isOAuthErrorResponse(json: unknown): json is OAuthErrorResponse {
   return (
-    typeof json === "object" &&
+    typeof json === 'object' &&
     json !== null &&
-    ("error" in json || "error_description" in json)
+    ('error' in json || 'error_description' in json)
   );
 }
 
@@ -243,10 +200,10 @@ function isOAuthErrorResponse(json: unknown): json is OAuthErrorResponse {
  */
 function isErrorWithMessage(error: unknown): error is { message: string } {
   return (
-    typeof error === "object" &&
+    typeof error === 'object' &&
     error !== null &&
-    "message" in error &&
-    typeof (error as Record<string, unknown>).message === "string"
+    'message' in error &&
+    typeof (error as Record<string, unknown>).message === 'string'
   );
 }
 
@@ -260,33 +217,46 @@ function isErrorWithMessage(error: unknown): error is { message: string } {
  * @returns A new object with all undefined values removed.
  */
 export function omitUndefinedValues<T extends Record<string, unknown>>(
-  input: T
+  input: T,
 ): Partial<T> {
   return Object.fromEntries(
-    Object.entries(input).filter(([_, v]) => v !== undefined)
+    Object.entries(input).filter(([_, v]) => v !== undefined),
   ) as Partial<T>;
 }
 
 /**
  * @internal
  *
- * Parses the `state` parameter returned from an OAuth callback into a structured object.
+ * Decodes and parses the `state` parameter returned from an OAuth callback.
+ * Ensures the state includes both `csrf` and `providerKey` for CSRF and instance validation.
  *
- * This function safely attempts to parse the raw `state` string (usually a JSON-encoded object)
- * that was previously encoded and sent during the OAuth login flow. It ensures the result is
- * an object, and returns an empty object if parsing fails or the result is invalid.
- *
- * @param rawState - The raw `state` string from the OAuth callback query.
- *
- * @returns A plain object representation of the parsed state, or an empty object if invalid.
+ * @param rawState - The base64url-encoded state string from the OAuth callback.
+ * @returns A strongly typed OAuthParsedState object.
+ * @throws {H3Error} If decoding or validation fails.
  */
 export function parseOAuthState(rawState: string): OAuthParsedState {
   try {
-    const parsed = JSON.parse(rawState);
+    const decoded = Buffer.from(
+      decodeURIComponent(rawState),
+      'base64url',
+    ).toString('utf-8');
+    const parsed = JSON.parse(decoded);
 
-    return typeof parsed === "object" && parsed !== null ? parsed : {};
+    if (
+      typeof parsed !== 'object' ||
+      parsed === null ||
+      typeof parsed.csrf !== 'string' ||
+      typeof parsed.providerKey !== 'string'
+    ) {
+      throw new Error('Invalid state structure');
+    }
+
+    return parsed as OAuthParsedState;
   } catch {
-    return {};
+    throw createError({
+      statusCode: 400,
+      statusMessage: 'Invalid or malformed OAuth state parameter',
+    });
   }
 }
 
@@ -328,11 +298,11 @@ export function buildAuthUrl({
   state: string;
 }): string {
   const url = new URL(authorizeEndpoint);
-  url.searchParams.set("client_id", clientId);
-  url.searchParams.set("redirect_uri", redirectUri);
-  url.searchParams.set("response_type", "code");
-  url.searchParams.set("scope", scopes.join(" "));
-  url.searchParams.set("state", state);
+  url.searchParams.set('client_id', clientId);
+  url.searchParams.set('redirect_uri', redirectUri);
+  url.searchParams.set('response_type', 'code');
+  url.searchParams.set('scope', scopes.join(' '));
+  url.searchParams.set('state', state);
   return url.toString();
 }
 
@@ -340,114 +310,83 @@ export function buildAuthUrl({
  * @internal
  *
  * Resolves the `state` parameter to use in an OAuth 2.0 authorization request
- * and sets it as a secure, HTTP-only cookie for CSRF protection.
+ * and sets a secure, HTTP-only cookie to persist the CSRF token for verification.
  *
- * This function supports several types of user-provided `state` values:
- * - A static string
- * - An object (which will be serialized to JSON)
- * - A function returning either a string or serializable object
- * - If no value is provided, a random UUID will be generated
+ * Always returns a base64-encoded JSON object that includes:
+ * - A `csrf` token for request validation
+ * - Any user-provided metadata (e.g. `returnTo`, `instanceKey`)
+ * - The providerKey (e.g. "clio" or "clio:smithlaw")
  *
- * The resolved state value is stored in a cookie named `${provider}_oauth_state`
- * with a 5-minute expiration, and returned for inclusion in the authorization URL.
+ * @param event - The H3 request event object
+ * @param providerKey - A unique key identifying the OAuth config instance
+ * @param userState - Optional state object or function returning a state object
  *
- * @param event - The H3 request event object, used to set the cookie.
- * @param provider - The OAuth provider name (used in the cookie name).
- * @param userState - An optional string, object, or function returning a string/object.
- *
- * @returns The resolved `state` string to include in the OAuth authorization request.
- *
- * @example
- * ```ts
- * const state = resolveState(event, "clio", { from: "/dashboard" });
- * const url = buildAuthUrl({ ..., state });
- * ```
+ * @returns A base64url-encoded string to use as the `state` query param
  */
 export function resolveState(
   event: H3Event,
-  provider: string,
-  userState?: OAuthStateValue
+  providerKey: string,
+  userState?: OAuthStateValue,
 ): string {
-  let stateValue: string;
+  const resolved =
+    typeof userState === 'function' ? userState(event) : userState ?? {};
 
-  if (typeof userState === "function") {
-    const result = userState(event);
-    stateValue = typeof result === "string" ? result : JSON.stringify(result);
-  } else if (typeof userState === "string") {
-    stateValue = userState;
-  } else if (typeof userState === "object" && userState !== null) {
-    stateValue = JSON.stringify(userState);
-  } else {
-    stateValue = crypto.randomUUID();
+  if (
+    typeof resolved !== 'object' ||
+    resolved === null ||
+    Array.isArray(resolved)
+  ) {
+    throw new TypeError('OAuth state must be a plain object');
   }
 
-  setCookie(event, `${provider}_oauth_state`, stateValue, {
+  const csrf = crypto.randomUUID();
+
+  const stateObject = {
+    ...resolved,
+    csrf,
+    providerKey,
+  };
+
+  const encodedState = encodeURIComponent(
+    Buffer.from(JSON.stringify(stateObject)).toString('base64url'),
+  );
+
+  setCookie(event, `oauth_csrf_${providerKey}`, csrf, {
     httpOnly: true,
-    path: "/",
-    sameSite: "lax",
     secure: true,
-    maxAge: 300,
+    sameSite: 'lax',
+    path: '/',
+    maxAge: 300, // 5 minutes
   });
 
-  return stateValue;
+  return encodedState;
 }
 
 /**
  * @internal
  *
- * Verifies the `state` parameter returned in an OAuth callback against the value
- * previously stored in a secure, HTTP-only cookie during the login flow.
+ * Verifies the CSRF token in the parsed `state` object against the cookie
+ * set during the login step. Prevents replay attacks and forgery.
  *
- * This function ensures that the OAuth response was not forged or intercepted
- * by comparing the returned `state` to the expected value stored in
- * `${provider}_oauth_state`. If the values don't match, it throws an error
- * to prevent the token exchange from proceeding.
+ * Deletes the CSRF cookie after validation.
  *
- * The state cookie is deleted after verification, regardless of success or failure.
+ * @param event - The H3 request event
+ * @param parsedState - The parsed OAuth state object (must include `csrf` and `providerKey`)
  *
- * @param event - The current H3 request event, containing cookies and context.
- * @param provider - The OAuth provider name (e.g., "azure", "clio", "intuit").
- * @param state - The `state` query parameter received from the OAuth callback URL.
- *
- * @throws {H3Error} If the state cookie is missing or the values do not match.
- *
+ * @throws {H3Error} If the CSRF token is missing or does not match
  */
 export function verifyStateParam(
   event: H3Event,
-  provider: OAuthProvider,
-  state: string
+  parsedState: { csrf: string; providerKey: string },
 ): void {
-  const cookieKey = `${provider}_oauth_state`;
+  const { csrf, providerKey } = parsedState;
+  const cookieKey = `oauth_csrf_${providerKey}`;
+  const expected = getCookie(event, cookieKey);
 
-  const expectedStateRaw = getCookie(event, cookieKey);
-
-  if (!expectedStateRaw || typeof state !== "string") {
-    throw createError({
-      statusCode: 400,
-      statusMessage: `Missing or invalid state for ${provider} OAuth callback`,
-    });
-  }
-
-  // Attempt to parse both as JSON; fall back to string comparison if parsing fails
-  let parsedExpected: unknown = expectedStateRaw;
-  let parsedReceived: unknown = state;
-
-  try {
-    parsedExpected = JSON.parse(expectedStateRaw);
-    parsedReceived = JSON.parse(state);
-  } catch {
-    // Leave them as raw strings
-  }
-
-  const isMatch =
-    typeof parsedExpected === "object" && typeof parsedReceived === "object"
-      ? deepEqual(parsedExpected, parsedReceived)
-      : parsedExpected === parsedReceived;
-
-  if (!isMatch) {
+  if (!expected || csrf !== expected) {
     throw createError({
       statusCode: 401,
-      statusMessage: `State mismatch for ${provider} OAuth callback`,
+      statusMessage: `CSRF mismatch for OAuth callback [${providerKey}]`,
     });
   }
 
@@ -478,25 +417,25 @@ export function verifyStateParam(
 export async function exchangeCodeForTokens<P extends OAuthProvider>(
   code: string,
   config: OAuthProviderConfigMap[P],
-  _provider: P
+  _provider: P,
 ): Promise<OAuthProviderTokenMap[P]> {
   const params: Record<string, string> = {
     client_id: config.clientId,
     client_secret: config.clientSecret,
-    grant_type: "authorization_code",
+    grant_type: 'authorization_code',
     code,
     redirect_uri: config.redirectUri,
   };
 
   if (config.scopes) {
-    params.scope = config.scopes.join(" ");
+    params.scope = config.scopes.join(' ');
   }
 
   try {
     return await ofetch<OAuthProviderTokenMap[P]>(config.tokenEndpoint, {
-      method: "POST",
+      method: 'POST',
       headers: {
-        "Content-Type": "application/x-www-form-urlencoded",
+        'Content-Type': 'application/x-www-form-urlencoded',
       },
       body: new URLSearchParams(params).toString(),
     });
@@ -526,16 +465,16 @@ export async function exchangeCodeForTokens<P extends OAuthProvider>(
  */
 export function parseOAuthCallbackQuery<P extends OAuthProvider>(
   event: H3Event,
-  provider: P
+  provider: P,
 ): OAuthCallbackQuery<P> {
   const query = getQuery(event);
 
   const base = omitUndefinedValues({
-    code: typeof query.code === "string" ? query.code : undefined,
-    state: typeof query.state === "string" ? query.state : undefined,
-    error: typeof query.error === "string" ? query.error : undefined,
+    code: typeof query.code === 'string' ? query.code : undefined,
+    state: typeof query.state === 'string' ? query.state : undefined,
+    error: typeof query.error === 'string' ? query.error : undefined,
     error_description:
-      typeof query.error_description === "string"
+      typeof query.error_description === 'string'
         ? query.error_description
         : undefined,
   }) as BaseOAuthCallbackQuery;
@@ -550,7 +489,7 @@ export function parseOAuthCallbackQuery<P extends OAuthProvider>(
 
     const value = query[key];
 
-    if (typeof value === "string") {
+    if (typeof value === 'string') {
       extras[key] = value;
     }
   }
@@ -585,14 +524,14 @@ export function parseOAuthCallbackQuery<P extends OAuthProvider>(
 export async function refreshToken<P extends OAuthProvider>(
   refreshTokenValue: string,
   providerConfig: OAuthProviderConfigMap[P],
-  _provider: P
+  _provider: P,
 ): Promise<RefreshTokenResponse<P> | false> {
   const requestConfig = {
     url: providerConfig.tokenEndpoint,
     params: {
       client_secret: providerConfig.clientSecret,
       refresh_token: refreshTokenValue,
-      grant_type: "refresh_token",
+      grant_type: 'refresh_token',
     },
   };
 
@@ -600,12 +539,12 @@ export async function refreshToken<P extends OAuthProvider>(
     const tokenResponse = await ofetch<RefreshTokenResponse<P>>(
       requestConfig.url,
       {
-        method: "POST",
+        method: 'POST',
         headers: {
-          "Content-Type": "application/x-www-form-urlencoded",
+          'Content-Type': 'application/x-www-form-urlencoded',
         },
         body: new URLSearchParams(requestConfig.params).toString(),
-      }
+      },
     );
 
     // Cast back to token response — optional string coercion step removed
@@ -645,13 +584,18 @@ function parseTokenField(raw: string): string | number {
  */
 export async function oAuthTokensAreValid<P extends OAuthProvider>(
   event: H3Event,
-  provider: P
+  provider: P,
+  instanceKey?: string,
 ): Promise<TokenValidationResult<P> | false> {
-  const access_token = getCookie(event, `${provider}_access_token`);
-  const refresh_token = getCookie(event, `${provider}_refresh_token`);
+  const providerKey = getProviderKey(provider, instanceKey);
+
+  const access_token = getCookie(event, `${providerKey}_access_token`);
+
+  const refresh_token = getCookie(event, `${providerKey}_refresh_token`);
+
   const access_token_expires_at = getCookie(
     event,
-    `${provider}_access_token_expires_at`
+    `${providerKey}_access_token_expires_at`,
   );
 
   if (!access_token || !refresh_token || !access_token_expires_at) return false;
@@ -659,7 +603,9 @@ export async function oAuthTokensAreValid<P extends OAuthProvider>(
   const encryptedRefreshToken = decrypt(refresh_token);
 
   const expires_in = parseInt(access_token_expires_at, 10);
+
   const now = Math.floor(Date.now() / 1000);
+
   const isAccessTokenExpired = now >= expires_in;
 
   const base = {
@@ -672,23 +618,30 @@ export async function oAuthTokensAreValid<P extends OAuthProvider>(
   if (providerConfig[provider].validateRefreshTokenExpiry) {
     const refreshExpiresAt = getCookie(
       event,
-      `${provider}_refresh_token_expires_at`
+      `${providerKey}_refresh_token_expires_at`,
     );
+
     if (!refreshExpiresAt) return false;
 
     const refreshExpiry = parseInt(refreshExpiresAt, 10);
+
     if (isNaN(refreshExpiry) || now >= refreshExpiry) {
       return {
         tokens: {
           ...base,
           // fallback to partial fields even if refresh is expired
         } as OAuthProviderTokenMap[P],
-        status: "expired",
+        status: 'expired',
       };
     }
   }
 
-  const additionalFields = getProviderCookieFields(event, provider);
+  const additionalFields = getProviderCookieFields(
+    event,
+    provider,
+    providerKey,
+  );
+
   if (additionalFields === false) return false;
 
   const tokens = {
@@ -698,7 +651,7 @@ export async function oAuthTokensAreValid<P extends OAuthProvider>(
 
   return {
     tokens,
-    status: isAccessTokenExpired ? "expired" : "valid",
+    status: isAccessTokenExpired ? 'expired' : 'valid',
   };
 }
 
@@ -726,14 +679,14 @@ export async function oAuthTokensAreValid<P extends OAuthProvider>(
 export function normalizeRefreshedToken<P extends OAuthProvider>(
   provider: P,
   refreshed: RefreshTokenResponse<P>,
-  previous: OAuthProviderTokenMap[P]
+  previous: OAuthProviderTokenMap[P],
 ): OAuthProviderTokenMap[P] {
   const keysToPreserve = providerConfig[provider].providerSpecificFields;
 
   const preserved = preserveFields(
     provider,
     previous,
-    extractPreservableKeys(keysToPreserve)
+    extractPreservableKeys(keysToPreserve),
   );
 
   const merged = {
@@ -770,10 +723,10 @@ export function normalizeRefreshedToken<P extends OAuthProvider>(
  * ```
  */
 function extractPreservableKeys<P extends OAuthProvider>(
-  fields: TokenField<P>[]
+  fields: TokenField<P>[],
 ): (keyof OAuthProviderTokenMap[P])[] {
   return fields.map((field) =>
-    isStructuredTokenField(field) ? field.key : field
+    isStructuredTokenField(field) ? field.key : field,
   );
 }
 
@@ -793,11 +746,11 @@ function extractPreservableKeys<P extends OAuthProvider>(
  */
 export function preserveFields<
   P extends OAuthProvider,
-  K extends keyof OAuthProviderTokenMap[P]
+  K extends keyof OAuthProviderTokenMap[P],
 >(
   _provider: P,
   source: OAuthProviderTokenMap[P],
-  keys: K[]
+  keys: K[],
 ): Pick<OAuthProviderTokenMap[P], K> {
   const result = {} as Pick<OAuthProviderTokenMap[P], K>;
   for (const key of keys) {
@@ -823,9 +776,9 @@ export function preserveFields<
  * @returns `true` if the field is an object with a `key` property, otherwise `false`.
  */
 function isStructuredTokenField<P extends OAuthProvider>(
-  field: TokenField<P>
+  field: TokenField<P>,
 ): field is Extract<TokenField<P>, { key: keyof OAuthProviderTokenMap[P] }> {
-  return typeof field === "object" && field !== null && "key" in field;
+  return typeof field === 'object' && field !== null && 'key' in field;
 }
 
 /**
@@ -849,7 +802,8 @@ function isStructuredTokenField<P extends OAuthProvider>(
  */
 export function getProviderCookieFields<P extends OAuthProvider>(
   event: H3Event,
-  provider: P
+  provider: P,
+  providerKey: string,
 ):
   | Partial<Record<keyof OAuthProviderTokenMap[P], ProviderFieldValue<P>>>
   | false {
@@ -858,8 +812,16 @@ export function getProviderCookieFields<P extends OAuthProvider>(
   >;
 
   for (const { cookieKey, fieldKey } of resolveProviderFieldMeta(provider)) {
-    const raw = getCookie(event, cookieKey);
+    // Adjust cookie key to use instance-scoped prefix
+    const scopedCookieKey = cookieKey.replace(
+      `${provider}_`,
+      `${providerKey}_`,
+    );
+
+    const raw = getCookie(event, scopedCookieKey);
+
     if (raw == null) return false;
+
     result[fieldKey] = parseTokenField(raw) as ProviderFieldValue<P>;
   }
 
@@ -877,31 +839,38 @@ export function getProviderCookieFields<P extends OAuthProvider>(
  * fields and structured fields with custom `setter` functions for transforming
  * the value before storage.
  *
- * Only values that are defined and of type `string` or `number` are written.
- * Undefined or non-serializable values are ignored.
+ * The cookies are prefixed using the full providerKey, which includes
+ * the instanceKey when available (e.g. `clio:sam_ext_expires_at`).
  *
  * @param event - The H3 event to attach cookies to.
  * @param tokens - The typed OAuth token payload for the provider.
- * @param provider - The OAuth provider key (e.g., "clio", "azure", "intuit").
- * @param baseOptions - The default cookie options to apply to each write (e.g., `secure`, `httpOnly`).
+ * @param provider - The base OAuth provider name (e.g., "clio", "azure", "intuit").
+ * @param providerKey - The full provider key including instance (e.g., "clio:sam").
+ * @param baseOptions - Default cookie options (e.g., secure, path, sameSite).
  */
 export function setProviderCookieFields<P extends OAuthProvider>(
   event: H3Event,
   tokens: OAuthProviderTokenMap[P],
   provider: P,
-  baseOptions: Parameters<typeof setCookie>[3]
+  providerKey: string,
+  baseOptions: Parameters<typeof setCookie>[3],
 ): void {
   for (const { cookieKey, fieldKey, setter } of resolveProviderFieldMeta(
-    provider
+    provider,
   )) {
     const raw = tokens[fieldKey];
+
     if (raw === undefined) continue;
 
     const value = setter ? setter(String(raw)) : String(raw);
 
-    // Only set cookies for serializable types
-    if (typeof raw === "string" || typeof raw === "number") {
-      setCookie(event, cookieKey, value, baseOptions);
+    if (typeof raw === 'string' || typeof raw === 'number') {
+      const scopedCookieKey = cookieKey.replace(
+        `${provider}_`,
+        `${providerKey}_`,
+      );
+
+      setCookie(event, scopedCookieKey, value, baseOptions);
     }
   }
 }
@@ -912,24 +881,34 @@ export function setProviderCookieFields<P extends OAuthProvider>(
  * Retrieves all cookie keys for a given OAuth provider.
  *
  * This function constructs an array of all cookie names used for a provider's
- * tokens and fields.
+ * tokens and fields, optionally scoped by an instanceKey (e.g., "clio:sam").
  *
- * @param provider - The OAuth provider key (e.g., `"clio"`, `"azure"`, `"intuit"`).
+ * @param provider - The base OAuth provider key (e.g., "clio", "azure", "intuit").
+ * @param instanceKey - Optional instance key to prefix cookies with (e.g., "sam").
  *
- * @returns An array of all cookie keys for the provider.
+ * @returns An array of all cookie keys for the scoped provider.
  */
-export function getProviderCookieKeys(provider: OAuthProvider): string[] {
+export function getProviderCookieKeys(
+  provider: OAuthProvider,
+  instanceKey?: string,
+): string[] {
+  const providerKey = instanceKey ? `${provider}:${instanceKey}` : provider;
+
   const base = [
-    `${provider}_access_token`,
-    `${provider}_refresh_token`,
-    `${provider}_access_token_expires_at`,
+    `${providerKey}_access_token`,
+    `${providerKey}_refresh_token`,
+    `${providerKey}_access_token_expires_at`,
   ];
 
   const specific = providerConfig[provider].providerSpecificFields.map(
-    (field) =>
-      typeof field === "string"
-        ? `${provider}_${field}`
-        : field.cookieName ?? `${provider}_${String(field.key)}`
+    (field) => {
+      const rawKey =
+        typeof field === 'string'
+          ? `${provider}_${field}`
+          : field.cookieName ?? `${provider}_${String(field.key)}`;
+
+      return rawKey.replace(`${provider}_`, `${providerKey}_`);
+    },
   );
 
   return [...base, ...specific];
@@ -956,7 +935,7 @@ export function getProviderCookieKeys(provider: OAuthProvider): string[] {
  * @returns An array of resolved metadata field descriptors for cookie handling.
  */
 function resolveProviderFieldMeta<P extends OAuthProvider>(
-  provider: P
+  provider: P,
 ): Array<{
   cookieKey: string;
   fieldKey: keyof OAuthProviderTokenMap[P];
@@ -965,7 +944,7 @@ function resolveProviderFieldMeta<P extends OAuthProvider>(
   const fields = providerConfig[provider].providerSpecificFields;
 
   return fields.flatMap((field) => {
-    if (typeof field === "string") {
+    if (typeof field === 'string') {
       return [
         {
           cookieKey: `${provider}_${field}`,
@@ -985,4 +964,24 @@ function resolveProviderFieldMeta<P extends OAuthProvider>(
 
     return []; // skip malformed
   });
+}
+
+/**
+ * Resolves a full provider key based on provider and optional instanceKey.
+ *
+ * The returned key is used for namespacing cookies and CSRF tokens.
+ * By default, the format is `${provider}:${instanceKey}`.
+ *
+ * You can customize the delimiter globally later by abstracting this.
+ *
+ * @param provider - The base OAuth provider name (e.g. "clio").
+ * @param instanceKey - Optional instance key (e.g. "smithlaw").
+ * @returns A full provider key (e.g. "clio:smithlaw" or "clio")
+ */
+export function getProviderKey(
+  provider: string,
+  instanceKey?: string,
+  delimiter: string = ':',
+): string {
+  return instanceKey ? `${provider}${delimiter}${instanceKey}` : provider;
 }

@@ -1,4 +1,4 @@
-import type { OAuthProvider, ProviderConfig } from "./types";
+import type { OAuthProvider, ProviderConfig } from './types';
 
 export const providerConfig: {
   [P in OAuthProvider]: ProviderConfig<P>;
@@ -6,13 +6,13 @@ export const providerConfig: {
   azure: {
     providerSpecificFields: [
       {
-        key: "ext_expires_in",
-        cookieName: "azure_ext_expires_at",
+        key: 'ext_expires_in',
+        cookieName: 'azure_ext_expires_at',
         setter: (value) =>
           String(Math.floor(Date.now() / 1000) + Number(value)),
       },
     ],
-    callbackQueryFields: ["session_state", "id_token"],
+    callbackQueryFields: ['session_state', 'id_token'],
   },
   clio: {
     providerSpecificFields: [],
@@ -20,13 +20,13 @@ export const providerConfig: {
   intuit: {
     providerSpecificFields: [
       {
-        key: "x_refresh_token_expires_in",
-        cookieName: "intuit_refresh_token_expires_at",
+        key: 'x_refresh_token_expires_in',
+        cookieName: 'intuit_refresh_token_expires_at',
         setter: (value) =>
           String(Math.floor(Date.now() / 1000) + Number(value)),
       },
     ],
-    callbackQueryFields: ["realmId"],
+    callbackQueryFields: ['realmId'],
     validateRefreshTokenExpiry: true,
   },
 };

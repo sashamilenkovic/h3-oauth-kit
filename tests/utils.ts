@@ -1,7 +1,7 @@
-import type { H3Event } from "h3";
-import { IncomingMessage, ServerResponse } from "node:http";
-import { createEvent } from "h3";
-import { encrypt } from "../src/utils/encryption";
+import type { H3Event } from 'h3';
+import { IncomingMessage, ServerResponse } from 'node:http';
+import { createEvent } from 'h3';
+import { encrypt } from '../src/utils/encryption';
 
 /**
  * Creates a mock H3Event for unit testing.
@@ -17,11 +17,11 @@ export function createMockEvent(options?: {
   const { cookieHeader, query } = options ?? {};
 
   const req = new IncomingMessage(null as any);
-  req.method = "GET";
+  req.method = 'GET';
 
-  const queryString = query ? "?" + new URLSearchParams(query).toString() : "";
+  const queryString = query ? '?' + new URLSearchParams(query).toString() : '';
 
-  req.url = "/" + queryString;
+  req.url = '/' + queryString;
 
   req.headers = {
     ...(cookieHeader ? { cookie: cookieHeader } : {}),
@@ -36,11 +36,17 @@ export function createMockEvent(options?: {
  */
 export function withEncryptedRefreshToken<
   P extends string,
-  T extends Record<string, any> // ⬅️ changed from string to any
+  T extends Record<string, any>, // ⬅️ changed from string to any
 >(provider: P, tokens: T): T {
   const key = `${provider}_refresh_token` as keyof T;
   return {
     ...tokens,
     [key]: encrypt(tokens[key] as string),
   };
+}
+
+export function encodeState(state: object): string {
+  return encodeURIComponent(
+    Buffer.from(JSON.stringify(state)).toString('base64url'),
+  );
 }

@@ -1,16 +1,17 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
-import { handleOAuthLogout } from "../src";
-import { deleteCookie, sendRedirect } from "h3";
-import type { H3Event } from "h3";
+import type { H3Event } from 'h3';
+
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { handleOAuthLogout } from '../src';
+import { deleteCookie, sendRedirect } from 'h3';
 
 // Mock h3 functions
-vi.mock("h3", () => ({
+vi.mock('h3', () => ({
   deleteCookie: vi.fn(),
   sendRedirect: vi.fn(),
   defineEventHandler: (handler: Function) => handler,
 }));
 
-describe("handleOAuthLogout", () => {
+describe('handleOAuthLogout', () => {
   let mockEvent: H3Event;
 
   beforeEach(() => {
@@ -18,88 +19,85 @@ describe("handleOAuthLogout", () => {
     mockEvent = {} as H3Event;
   });
 
-  describe("as a route handler", () => {
-    it("should delete cookies for all providers", async () => {
-      const handler = handleOAuthLogout(["clio", "azure"]);
-      await handler(mockEvent);
-
-      expect(deleteCookie).toHaveBeenCalledTimes(7); // 3 for clio + 4 for azure
-      // Clio cookies
-      expect(deleteCookie).toHaveBeenCalledWith(mockEvent, "clio_access_token");
-      expect(deleteCookie).toHaveBeenCalledWith(
-        mockEvent,
-        "clio_refresh_token"
-      );
-      expect(deleteCookie).toHaveBeenCalledWith(
-        mockEvent,
-        "clio_access_token_expires_at"
-      );
-      // Azure cookies
-      expect(deleteCookie).toHaveBeenCalledWith(
-        mockEvent,
-        "azure_access_token"
-      );
-      expect(deleteCookie).toHaveBeenCalledWith(
-        mockEvent,
-        "azure_refresh_token"
-      );
-      expect(deleteCookie).toHaveBeenCalledWith(
-        mockEvent,
-        "azure_access_token_expires_at"
-      );
-      expect(deleteCookie).toHaveBeenCalledWith(
-        mockEvent,
-        "azure_ext_expires_at"
-      );
-    });
-
-    it("should return a structured response", async () => {
-      const handler = handleOAuthLogout(["clio"]);
+  describe('as a route handler', () => {
+    it('deletes cookies for string-based providers', async () => {
+      const handler = handleOAuthLogout(['clio', 'azure']);
       const result = await handler(mockEvent);
 
-      expect(deleteCookie).toHaveBeenCalledTimes(3); // 3 cookies for clio
+      expect(deleteCookie).toHaveBeenCalledTimes(7); // 3 for clio + 4 for azure
       expect(result).toEqual({
         loggedOut: true,
-        providers: ["clio"],
+        providers: [{ provider: 'clio' }, { provider: 'azure' }],
       });
     });
-  });
 
-  describe("as a utility with redirect", () => {
-    it("should delete cookies and redirect", async () => {
-      await handleOAuthLogout(["clio"], { redirectTo: "/login" }, mockEvent);
+    it('deletes cookies for object-based providers', async () => {
+      const handler = handleOAuthLogout([
+        { provider: 'clio' },
+        { provider: 'azure', instanceKey: 'dev' },
+      ]);
+      const result = await handler(mockEvent);
 
-      expect(deleteCookie).toHaveBeenCalledTimes(3); // 3 cookies for clio
-      expect(sendRedirect).toHaveBeenCalledWith(mockEvent, "/login", 302);
-    });
-
-    it("should handle multiple providers with redirect", async () => {
-      await handleOAuthLogout(
-        ["clio", "azure"],
-        { redirectTo: "/dashboard" },
-        mockEvent
+      expect(deleteCookie).toHaveBeenCalledWith(mockEvent, 'clio_access_token');
+      expect(deleteCookie).toHaveBeenCalledWith(
+        mockEvent,
+        'azure:dev_access_token',
       );
 
-      expect(deleteCookie).toHaveBeenCalledTimes(7); // 3 for clio + 4 for azure
-      expect(sendRedirect).toHaveBeenCalledWith(mockEvent, "/dashboard", 302);
-    });
-  });
-
-  describe("as a utility without redirect", () => {
-    it("should delete cookies and return response", async () => {
-      const result = await handleOAuthLogout(["clio"], {}, mockEvent);
-
-      expect(deleteCookie).toHaveBeenCalledTimes(3); // 3 cookies for clio
-      expect(sendRedirect).not.toHaveBeenCalled();
       expect(result).toEqual({
         loggedOut: true,
-        providers: ["clio"],
+        providers: [
+          { provider: 'clio' },
+          { provider: 'azure', instanceKey: 'dev' },
+        ],
       });
     });
   });
 
-  describe("error handling", () => {
-    it("should handle empty providers array", async () => {
+  describe('as a utility with redirect', () => {
+    it('deletes cookies and redirects (string input)', async () => {
+      await handleOAuthLogout(['clio'], { redirectTo: '/login' }, mockEvent);
+
+      expect(deleteCookie).toHaveBeenCalledTimes(3);
+      expect(sendRedirect).toHaveBeenCalledWith(mockEvent, '/login', 302);
+    });
+
+    it('deletes cookies and redirects (scoped input)', async () => {
+      await handleOAuthLogout(
+        [{ provider: 'clio', instanceKey: 'firm' }],
+        { redirectTo: '/firm' },
+        mockEvent,
+      );
+
+      expect(deleteCookie).toHaveBeenCalledWith(
+        mockEvent,
+        'clio:firm_access_token',
+      );
+      expect(sendRedirect).toHaveBeenCalledWith(mockEvent, '/firm', 302);
+    });
+  });
+
+  describe('as a utility without redirect', () => {
+    it('deletes cookies and returns response (scoped)', async () => {
+      const result = await handleOAuthLogout(
+        [{ provider: 'intuit', instanceKey: 'sandbox' }],
+        {},
+        mockEvent,
+      );
+
+      expect(deleteCookie).toHaveBeenCalledWith(
+        mockEvent,
+        'intuit:sandbox_access_token',
+      );
+      expect(result).toEqual({
+        loggedOut: true,
+        providers: [{ provider: 'intuit', instanceKey: 'sandbox' }],
+      });
+    });
+  });
+
+  describe('edge cases', () => {
+    it('handles empty input array', async () => {
       const handler = handleOAuthLogout([]);
       const result = await handler(mockEvent);
 

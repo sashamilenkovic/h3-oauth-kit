@@ -1,5 +1,6 @@
 import { getCookie, createError, setCookie, deleteCookie, getQuery, defineEventHandler, isError, sendRedirect } from 'h3';
 import { ofetch } from 'ofetch';
+import crypto$1 from 'crypto';
 
 const providerConfig = {
   azure: {
@@ -28,29 +29,34 @@ const providerConfig = {
   }
 };
 
-function deepEqual(a, b) {
-  if (a === b) return true;
-  if (typeof a !== typeof b) return false;
-  if (a === null || b === null) return a === b;
-  if (typeof a !== "object" || typeof b !== "object") return false;
-  if (Array.isArray(a) !== Array.isArray(b)) return false;
-  if (Array.isArray(a) && Array.isArray(b)) {
-    if (a.length !== b.length) return false;
-    for (let i = 0; i < a.length; i++) {
-      if (!deepEqual(a[i], b[i])) return false;
-    }
-    return true;
-  }
-  const keysA = Object.keys(a);
-  const keysB = Object.keys(b);
-  if (keysA.length !== keysB.length) return false;
-  for (const key of keysA) {
-    if (!(key in b)) return false;
-    if (!deepEqual(a[key], b[key])) return false;
-  }
-  return true;
+const IV_LENGTH = 16;
+const rawKey = process.env.H3_OAUTH_ENCRYPTION_KEY;
+if (!rawKey || rawKey.length !== 64) {
+  throw new Error(
+    "[h3-oauth-kit] H3_OAUTH_ENCRYPTION_KEY must be a 64-character hex string (32 bytes)."
+  );
 }
-function setProviderCookies(event, tokens, provider, options) {
+const ENCRYPTION_KEY = Buffer.from(rawKey, "hex");
+function encrypt(text) {
+  const iv = crypto$1.randomBytes(IV_LENGTH);
+  const cipher = crypto$1.createCipheriv("aes-256-cbc", ENCRYPTION_KEY, iv);
+  const encrypted = Buffer.concat([cipher.update(text), cipher.final()]);
+  return iv.toString("hex") + ":" + encrypted.toString("hex");
+}
+function decrypt(encryptedText) {
+  const [ivHex, encryptedHex] = encryptedText.split(":");
+  const iv = Buffer.from(ivHex, "hex");
+  const encrypted = Buffer.from(encryptedHex, "hex");
+  const decipher = crypto$1.createDecipheriv("aes-256-cbc", ENCRYPTION_KEY, iv);
+  const decrypted = Buffer.concat([
+    decipher.update(encrypted),
+    decipher.final()
+  ]);
+  return decrypted.toString();
+}
+
+function setProviderCookies(event, tokens, provider, options, instanceKey) {
+  const providerKey = instanceKey ? `${provider}:${instanceKey}` : provider;
   const base = {
     httpOnly: true,
     secure: true,
@@ -58,19 +64,26 @@ function setProviderCookies(event, tokens, provider, options) {
     path: options?.path ?? "/"
   };
   const cleanedAccessToken = tokens.access_token.startsWith("Bearer ") ? tokens.access_token.slice(7) : tokens.access_token;
-  setCookie(event, `${provider}_access_token`, cleanedAccessToken, {
+  setCookie(event, `${providerKey}_access_token`, cleanedAccessToken, {
     ...base,
     maxAge: tokens.expires_in
   });
   const expiry = Math.floor(Date.now() / 1e3) + tokens.expires_in;
-  setCookie(event, `${provider}_access_token_expires_at`, String(expiry), base);
+  setCookie(
+    event,
+    `${providerKey}_access_token_expires_at`,
+    String(expiry),
+    base
+  );
   if (tokens.refresh_token) {
-    setCookie(event, `${provider}_refresh_token`, tokens.refresh_token, {
+    const encryptedRefreshToken = encrypt(tokens.refresh_token);
+    setCookie(event, `${providerKey}_refresh_token`, encryptedRefreshToken, {
       ...base,
       maxAge: 30 * 24 * 60 * 60
+      // 30 days
     });
   }
-  setProviderCookieFields(event, tokens, provider, base);
+  setProviderCookieFields(event, tokens, provider, providerKey, base);
   return tokens;
 }
 async function parseError(error) {
@@ -116,10 +129,20 @@ function omitUndefinedValues(input) {
 }
 function parseOAuthState(rawState) {
   try {
-    const parsed = JSON.parse(rawState);
-    return typeof parsed === "object" && parsed !== null ? parsed : {};
+    const decoded = Buffer.from(
+      decodeURIComponent(rawState),
+      "base64url"
+    ).toString("utf-8");
+    const parsed = JSON.parse(decoded);
+    if (typeof parsed !== "object" || parsed === null || typeof parsed.csrf !== "string" || typeof parsed.providerKey !== "string") {
+      throw new Error("Invalid state structure");
+    }
+    return parsed;
   } catch {
-    return {};
+    throw createError({
+      statusCode: 400,
+      statusMessage: "Invalid or malformed OAuth state parameter"
+    });
   }
 }
 function buildAuthUrl({
@@ -137,48 +160,38 @@ function buildAuthUrl({
   url.searchParams.set("state", state);
   return url.toString();
 }
-function resolveState(event, provider, userState) {
-  let stateValue;
-  if (typeof userState === "function") {
-    const result = userState(event);
-    stateValue = typeof result === "string" ? result : JSON.stringify(result);
-  } else if (typeof userState === "string") {
-    stateValue = userState;
-  } else if (typeof userState === "object" && userState !== null) {
-    stateValue = JSON.stringify(userState);
-  } else {
-    stateValue = crypto.randomUUID();
+function resolveState(event, providerKey, userState) {
+  const resolved = typeof userState === "function" ? userState(event) : userState ?? {};
+  if (typeof resolved !== "object" || resolved === null || Array.isArray(resolved)) {
+    throw new TypeError("OAuth state must be a plain object");
   }
-  setCookie(event, `${provider}_oauth_state`, stateValue, {
+  const csrf = crypto.randomUUID();
+  const stateObject = {
+    ...resolved,
+    csrf,
+    providerKey
+  };
+  const encodedState = encodeURIComponent(
+    Buffer.from(JSON.stringify(stateObject)).toString("base64url")
+  );
+  setCookie(event, `oauth_csrf_${providerKey}`, csrf, {
     httpOnly: true,
-    path: "/",
-    sameSite: "lax",
     secure: true,
+    sameSite: "lax",
+    path: "/",
     maxAge: 300
+    // 5 minutes
   });
-  return stateValue;
+  return encodedState;
 }
-function verifyStateParam(event, provider, state) {
-  const cookieKey = `${provider}_oauth_state`;
-  const expectedStateRaw = getCookie(event, cookieKey);
-  if (!expectedStateRaw || typeof state !== "string") {
-    throw createError({
-      statusCode: 400,
-      statusMessage: `Missing or invalid state for ${provider} OAuth callback`
-    });
-  }
-  let parsedExpected = expectedStateRaw;
-  let parsedReceived = state;
-  try {
-    parsedExpected = JSON.parse(expectedStateRaw);
-    parsedReceived = JSON.parse(state);
-  } catch {
-  }
-  const isMatch = typeof parsedExpected === "object" && typeof parsedReceived === "object" ? deepEqual(parsedExpected, parsedReceived) : parsedExpected === parsedReceived;
-  if (!isMatch) {
+function verifyStateParam(event, parsedState) {
+  const { csrf, providerKey } = parsedState;
+  const cookieKey = `oauth_csrf_${providerKey}`;
+  const expected = getCookie(event, cookieKey);
+  if (!expected || csrf !== expected) {
     throw createError({
       statusCode: 401,
-      statusMessage: `State mismatch for ${provider} OAuth callback`
+      statusMessage: `CSRF mismatch for OAuth callback [${providerKey}]`
     });
   }
   deleteCookie(event, cookieKey);
@@ -238,7 +251,6 @@ async function refreshToken(refreshTokenValue, providerConfig2, _provider) {
       grant_type: "refresh_token"
     }
   };
-  console.log("requestConfig", requestConfig);
   try {
     const tokenResponse = await ofetch(
       requestConfig.url,
@@ -253,29 +265,34 @@ async function refreshToken(refreshTokenValue, providerConfig2, _provider) {
     return tokenResponse;
   } catch (error) {
     const { statusCode, message } = await parseError(error);
-    console.log("refresh token error", error);
     throw createError({ statusCode, message });
   }
 }
 function parseTokenField(raw) {
   return /^\d+$/.test(raw) ? parseInt(raw, 10) : raw;
 }
-async function oAuthTokensAreValid(event, provider) {
-  const access_token = getCookie(event, `${provider}_access_token`);
-  const refresh_token = getCookie(event, `${provider}_refresh_token`);
+async function oAuthTokensAreValid(event, provider, instanceKey) {
+  const providerKey = instanceKey ? `${provider}:${instanceKey}` : provider;
+  const access_token = getCookie(event, `${providerKey}_access_token`);
+  const refresh_token = getCookie(event, `${providerKey}_refresh_token`);
   const access_token_expires_at = getCookie(
     event,
-    `${provider}_access_token_expires_at`
+    `${providerKey}_access_token_expires_at`
   );
   if (!access_token || !refresh_token || !access_token_expires_at) return false;
+  const encryptedRefreshToken = decrypt(refresh_token);
   const expires_in = parseInt(access_token_expires_at, 10);
   const now = Math.floor(Date.now() / 1e3);
   const isAccessTokenExpired = now >= expires_in;
-  const base = { access_token, refresh_token, expires_in };
+  const base = {
+    access_token,
+    refresh_token: encryptedRefreshToken,
+    expires_in
+  };
   if (providerConfig[provider].validateRefreshTokenExpiry) {
     const refreshExpiresAt = getCookie(
       event,
-      `${provider}_refresh_token_expires_at`
+      `${providerKey}_refresh_token_expires_at`
     );
     if (!refreshExpiresAt) return false;
     const refreshExpiry = parseInt(refreshExpiresAt, 10);
@@ -289,7 +306,11 @@ async function oAuthTokensAreValid(event, provider) {
       };
     }
   }
-  const additionalFields = getProviderCookieFields(event, provider);
+  const additionalFields = getProviderCookieFields(
+    event,
+    provider,
+    providerKey
+  );
   if (additionalFields === false) return false;
   const tokens = {
     ...base,
@@ -331,16 +352,20 @@ function preserveFields(_provider, source, keys) {
 function isStructuredTokenField(field) {
   return typeof field === "object" && field !== null && "key" in field;
 }
-function getProviderCookieFields(event, provider) {
+function getProviderCookieFields(event, provider, providerKey) {
   const result = {};
   for (const { cookieKey, fieldKey } of resolveProviderFieldMeta(provider)) {
-    const raw = getCookie(event, cookieKey);
+    const scopedCookieKey = cookieKey.replace(
+      `${provider}_`,
+      `${providerKey}_`
+    );
+    const raw = getCookie(event, scopedCookieKey);
     if (raw == null) return false;
     result[fieldKey] = parseTokenField(raw);
   }
   return result;
 }
-function setProviderCookieFields(event, tokens, provider, baseOptions) {
+function setProviderCookieFields(event, tokens, provider, providerKey, baseOptions) {
   for (const { cookieKey, fieldKey, setter } of resolveProviderFieldMeta(
     provider
   )) {
@@ -348,18 +373,26 @@ function setProviderCookieFields(event, tokens, provider, baseOptions) {
     if (raw === void 0) continue;
     const value = setter ? setter(String(raw)) : String(raw);
     if (typeof raw === "string" || typeof raw === "number") {
-      setCookie(event, cookieKey, value, baseOptions);
+      const scopedCookieKey = cookieKey.replace(
+        `${provider}_`,
+        `${providerKey}_`
+      );
+      setCookie(event, scopedCookieKey, value, baseOptions);
     }
   }
 }
-function getProviderCookieKeys(provider) {
+function getProviderCookieKeys(provider, instanceKey) {
+  const providerKey = instanceKey ? `${provider}:${instanceKey}` : provider;
   const base = [
-    `${provider}_access_token`,
-    `${provider}_refresh_token`,
-    `${provider}_access_token_expires_at`
+    `${providerKey}_access_token`,
+    `${providerKey}_refresh_token`,
+    `${providerKey}_access_token_expires_at`
   ];
   const specific = providerConfig[provider].providerSpecificFields.map(
-    (field) => typeof field === "string" ? `${provider}_${field}` : field.cookieName ?? `${provider}_${String(field.key)}`
+    (field) => {
+      const rawKey = typeof field === "string" ? `${provider}_${field}` : field.cookieName ?? `${provider}_${String(field.key)}`;
+      return rawKey.replace(`${provider}_`, `${providerKey}_`);
+    }
   );
   return [...base, ...specific];
 }
@@ -384,25 +417,40 @@ function resolveProviderFieldMeta(provider) {
     return [];
   });
 }
+function getProviderKey(provider, instanceKey, delimiter = ":") {
+  return instanceKey ? `${provider}${delimiter}${instanceKey}` : provider;
+}
 
 const providerRegistry = /* @__PURE__ */ new Map();
-function registerOAuthProvider(provider, config) {
-  providerRegistry.set(provider, config);
+function registerOAuthProvider(provider, instanceOrConfig, maybeConfig) {
+  const isScoped = typeof instanceOrConfig === "string";
+  const key = isScoped ? `${provider}:${instanceOrConfig}` : provider;
+  const config = isScoped ? maybeConfig : instanceOrConfig;
+  providerRegistry.set(key, config);
 }
-function getOAuthProviderConfig(provider) {
-  const config = providerRegistry.get(provider);
+function getOAuthProviderConfig(provider, instanceKey) {
+  const key = instanceKey ? `${provider}:${instanceKey}` : provider;
+  const config = providerRegistry.get(key);
   if (!config) {
     throw createError({
       statusCode: 500,
-      statusMessage: `OAuth provider "${provider}" is not registered`
+      statusMessage: `OAuth provider "${key}" is not registered`
     });
   }
   return config;
 }
-function handleOAuthLogin(provider, options, event) {
+function handleOAuthLogin(provider, instanceKey, optionsOrEvent, maybeEvent) {
+  const isScoped = typeof instanceKey === "string";
+  const resolvedInstanceKey = isScoped ? instanceKey : void 0;
+  const options = isScoped ? optionsOrEvent : instanceKey ?? {};
+  const event = isScoped ? maybeEvent : optionsOrEvent;
   const handler = async (evt) => {
-    const config = getOAuthProviderConfig(provider);
-    const state = resolveState(evt, provider, options?.state);
+    const config = resolvedInstanceKey ? getOAuthProviderConfig(provider, resolvedInstanceKey) : getOAuthProviderConfig(provider);
+    const state = resolveState(
+      evt,
+      resolvedInstanceKey ? `${provider}:${resolvedInstanceKey}` : provider,
+      options?.state
+    );
     const authUrl = buildAuthUrl({
       authorizeEndpoint: config.authorizeEndpoint,
       clientId: config.clientId,
@@ -434,19 +482,20 @@ function handleOAuthCallback(provider, options, event) {
           statusMessage: "State missing in callback URL"
         });
       }
-      verifyStateParam(evt, provider, state);
       const parsedState = parseOAuthState(state);
-      const config = getOAuthProviderConfig(provider);
+      verifyStateParam(evt, parsedState);
+      const config = parsedState.instanceKey ? getOAuthProviderConfig(provider, parsedState.instanceKey) : getOAuthProviderConfig(provider);
       const rawTokens = await exchangeCodeForTokens(code, config, provider);
-      const callbackQueryData = parseOAuthCallbackQuery(evt, provider);
       const tokens = setProviderCookies(
         evt,
         rawTokens,
         provider,
-        options?.cookieOptions
+        options?.cookieOptions,
+        parsedState.instanceKey
       );
       const redirectTo = options?.redirectTo || "/";
       if (options?.redirect === false) {
+        const callbackQueryData = parseOAuthCallbackQuery(evt, provider);
         return { tokens, state: parsedState, callbackQueryData };
       }
       return sendRedirect(evt, redirectTo, 302);
@@ -479,17 +528,18 @@ function defineProtectedRoute(providers, handler, options) {
   return defineEventHandler(async (event) => {
     const ctx = event.context;
     ctx.h3OAuthKit = {};
-    for (const provider of providers) {
-      console.log("provider", provider);
+    for (const def of providers) {
+      const isScoped = typeof def !== "string";
+      const provider = isScoped ? def.provider : def;
+      const instanceKey = isScoped ? def.instanceKey : void 0;
+      const providerKey = getProviderKey(provider, instanceKey);
       try {
-        const result = await oAuthTokensAreValid(event, provider);
-        console.log("result", result);
+        const result = await oAuthTokensAreValid(event, provider, instanceKey);
         if (!result) {
           const error = createError({
             statusCode: 401,
-            message: `Missing or invalid tokens for "${provider}"`
+            message: `Missing or invalid tokens for "${providerKey}"`
           });
-          console.log("error", error);
           if (options?.onAuthFailure) {
             const response = await options.onAuthFailure(
               event,
@@ -503,18 +553,16 @@ function defineProtectedRoute(providers, handler, options) {
         }
         let tokens = result.tokens;
         if (result.status === "expired") {
-          console.log("result is expired", result);
-          const config = getOAuthProviderConfig(provider);
+          const config = instanceKey ? getOAuthProviderConfig(provider, instanceKey) : getOAuthProviderConfig(provider);
           const refreshed = await refreshToken(
-            result.tokens.refresh_token,
+            tokens.refresh_token,
             config,
             provider
           );
-          console.log("refreshed", refreshed);
           if (!refreshed) {
             const error = createError({
               statusCode: 401,
-              message: `Token refresh failed for "${provider}"`
+              message: `Token refresh failed for "${providerKey}"`
             });
             if (options?.onAuthFailure) {
               const response = await options.onAuthFailure(
@@ -536,12 +584,11 @@ function defineProtectedRoute(providers, handler, options) {
             event,
             fullToken,
             provider,
-            options?.cookieOptions
+            options?.cookieOptions,
+            instanceKey
           );
         }
-        const key = `${provider}_access_token`;
-        ctx[key] = tokens.access_token;
-        ctx.h3OAuthKit[provider] = tokens;
+        ctx.h3OAuthKit[providerKey] = tokens;
       } catch (error) {
         if (options?.onAuthFailure) {
           const response = await options.onAuthFailure(
@@ -566,18 +613,19 @@ function defineProtectedRoute(providers, handler, options) {
     return handler(event);
   });
 }
-function deleteProviderCookies(event, provider) {
-  for (const cookieName of getProviderCookieKeys(provider)) {
+function deleteProviderCookies(event, provider, instanceKey) {
+  for (const cookieName of getProviderCookieKeys(provider, instanceKey)) {
     deleteCookie(event, cookieName);
   }
 }
 function handleOAuthLogout(providers, options, event) {
   const handler = async (evt) => {
-    for (const provider of providers) {
-      deleteProviderCookies(evt, provider);
+    for (const { provider, instanceKey } of providers) {
+      deleteProviderCookies(evt, provider, instanceKey);
     }
     if (options?.redirectTo) {
       await sendRedirect(evt, options.redirectTo, 302);
+      return;
     }
     return {
       loggedOut: true,

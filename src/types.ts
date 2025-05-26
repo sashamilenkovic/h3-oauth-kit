@@ -1,6 +1,6 @@
-import type { H3Event, H3EventContext } from "h3";
+import type { H3Event } from 'h3';
 
-export type OAuthProvider = "azure" | "clio" | "intuit";
+export type OAuthProvider = 'azure' | 'clio' | 'intuit';
 
 export type RequiredPick<T, K extends keyof T> = {
   [P in K]-?: NonNullable<T[P]>;
@@ -27,7 +27,7 @@ export interface AzureOAuthProviderConfig extends BaseOAuthProviderConfig {
 export interface ClioOAuthProviderConfig extends BaseOAuthProviderConfig {}
 
 export interface IntuitOAuthProviderConfig extends BaseOAuthProviderConfig {
-  environment: "sandbox" | "production";
+  environment: 'sandbox' | 'production';
 }
 
 export interface OAuthCodeExchangeInput {
@@ -43,7 +43,7 @@ export interface OAuthTokenBase {
   access_token: string;
   refresh_token?: string;
   expires_in: number;
-  token_type: "Bearer" | "bearer";
+  token_type: 'Bearer' | 'bearer';
 }
 
 export type AzureAuthTokens = OAuthTokenBase & {
@@ -91,19 +91,19 @@ export interface IntuitRefreshTokenResponse {
   access_token: string;
   refresh_token: string;
   x_refresh_token_expires_in: number;
-  token_type: "bearer";
+  token_type: 'bearer';
 }
 
 export interface ClioRefreshTokenResponse {
   access_token: string;
-  token_type: "bearer";
+  token_type: 'bearer';
   expires_in: number;
 }
 
 export interface AzureRefreshTokenResponse {
   access_token: string;
   refresh_token: string;
-  token_type: "Bearer";
+  token_type: 'Bearer';
   expires_in: number;
   ext_expires_in: number;
 }
@@ -120,24 +120,12 @@ export type ProviderToken<T extends OAuthProvider> = OAuthProviderTokenMap[T];
 // Update the token validation result to use TokenResponse
 export type TokenValidationResult<T extends OAuthProvider> = {
   tokens: OAuthProviderTokenMap[T];
-  status: "valid" | "expired";
+  status: 'valid' | 'expired';
 };
 
-export type AzureTokenValidationResult = TokenValidationResult<"azure">;
-export type ClioTokenValidationResult = TokenValidationResult<"clio">;
-export type IntuitTokenValidationResult = TokenValidationResult<"intuit">;
-
-export type ProviderAccessTokenKeys<Providers extends OAuthProvider[]> =
-  `${Providers[number]}_access_token`;
-
-export type AugmentedContext<Providers extends OAuthProvider[]> = RequiredPick<
-  H3EventContext,
-  ProviderAccessTokenKeys<Providers>
-> & {
-  h3OAuthKit: {
-    [P in Providers[number]]: OAuthProviderTokenMap[P];
-  };
-};
+export type AzureTokenValidationResult = TokenValidationResult<'azure'>;
+export type ClioTokenValidationResult = TokenValidationResult<'clio'>;
+export type IntuitTokenValidationResult = TokenValidationResult<'intuit'>;
 
 export type OAuthProviderConfigMap = {
   azure: AzureOAuthProviderConfig;
@@ -159,21 +147,30 @@ export type RefreshTokenConfig<T extends OAuthProvider> =
 
 export type RefreshTokenConfigBuilder<T extends OAuthProvider> = (
   config: RefreshTokenConfig<T>,
-  refreshToken: string
+  refreshToken: string,
 ) => {
   url: string;
   params: Record<string, string>;
 };
 
-export type OAuthStateValue =
-  | string
-  | Record<string, unknown>
-  | ((event: H3Event) => string | Record<string, unknown>);
+export type OAuthState = {
+  csrf: string;
+  [key: string]: unknown;
+};
 
-export type OAuthParsedState = Record<string, string>;
+export type OAuthParsedState = {
+  csrf: string;
+  providerKey: string;
+  instanceKey?: string;
+  [key: string]: string;
+};
+
+export type OAuthStateValue =
+  | Partial<OAuthState>
+  | ((event: H3Event) => Partial<OAuthState>);
 
 export interface CookieOptionsOverride {
-  sameSite?: "lax" | "none";
+  sameSite?: 'lax' | 'none';
   path?: string;
 }
 
@@ -189,10 +186,10 @@ export interface ProtectedRouteOptions {
     event: H3Event,
     provider: OAuthProvider,
     reason:
-      | "missing-or-invalid-tokens"
-      | "token-refresh-failed"
-      | "error-occurred",
-    error: unknown
+      | 'missing-or-invalid-tokens'
+      | 'token-refresh-failed'
+      | 'error-occurred',
+    error: unknown,
   ) => Promise<unknown> | unknown;
 }
 
@@ -269,3 +266,45 @@ export interface OAuthErrorResponse {
   error?: string;
   error_description?: string;
 }
+
+export type ExtractInstanceKey<P> = P extends { instanceKey: infer I }
+  ? I
+  : undefined;
+
+export type ScopedProvider = { provider: OAuthProvider; instanceKey?: string };
+
+export type GetProviderKey<P> = P extends string
+  ? P
+  : P extends { provider: infer T; instanceKey?: infer I }
+  ? I extends string
+    ? `${T & string}:${I & string}`
+    : T & string
+  : never;
+
+export type ProviderId<P> = P extends string
+  ? P
+  : P extends { provider: infer Prov }
+  ? Prov extends OAuthProvider
+    ? Prov
+    : never
+  : never;
+
+export type AugmentedContext<Defs extends (OAuthProvider | ScopedProvider)[]> =
+  {
+    h3OAuthKit: {
+      [P in Defs[number] as GetProviderKey<P>]: OAuthProviderTokenMap[ProviderId<P>];
+    };
+  };
+
+export type ExtractProvider<P> = P extends { provider: infer T } ? T : P;
+
+export type NormalizedProviders<
+  T extends (
+    | OAuthProvider
+    | { provider: OAuthProvider; instanceKey?: string }
+  )[],
+> = {
+  [K in keyof T]: T[K] extends OAuthProvider ? { provider: T[K] } : T[K];
+};
+
+export type TokenFor<P extends OAuthProvider> = OAuthProviderTokenMap[P];
