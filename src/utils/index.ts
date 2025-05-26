@@ -309,6 +309,26 @@ export function buildAuthUrl({
 /**
  * @internal
  *
+ * Parses a provider key into its base provider and optional instance key components.
+ *
+ * @param providerKey - The full provider key (e.g., "azure" or "azure:smithlaw")
+ * @param delimiter - The delimiter used to separate provider and instance (default: ":")
+ * @returns An object with the base provider and optional instanceKey
+ */
+function parseProviderKey(
+  providerKey: string,
+  delimiter: string = ':',
+): { provider: string; instanceKey?: string } {
+  const parts = providerKey.split(delimiter);
+  if (parts.length === 1) {
+    return { provider: parts[0] };
+  }
+  return { provider: parts[0], instanceKey: parts[1] };
+}
+
+/**
+ * @internal
+ *
  * Resolves the `state` parameter to use in an OAuth 2.0 authorization request
  * and sets a secure, HTTP-only cookie to persist the CSRF token for verification.
  *
@@ -316,6 +336,7 @@ export function buildAuthUrl({
  * - A `csrf` token for request validation
  * - Any user-provided metadata (e.g. `returnTo`, `instanceKey`)
  * - The providerKey (e.g. "clio" or "clio:smithlaw")
+ * - The instanceKey separately when present (e.g. "smithlaw")
  *
  * @param event - The H3 request event object
  * @param providerKey - A unique key identifying the OAuth config instance
@@ -340,11 +361,13 @@ export function resolveState(
   }
 
   const csrf = crypto.randomUUID();
+  const { provider: _provider, instanceKey } = parseProviderKey(providerKey);
 
   const stateObject = {
     ...resolved,
     csrf,
     providerKey,
+    ...(instanceKey && { instanceKey }),
   };
 
   const encodedState = encodeURIComponent(
@@ -833,7 +856,7 @@ export function getProviderCookieFields<P extends OAuthProvider>(
  *
  * Writes provider-specific token metadata fields to HTTP-only cookies.
  *
- * This function iterates over the provider’s configured metadata fields
+ * This function iterates over the provider's configured metadata fields
  * (via `providerConfig[provider].providerSpecificFields`) and sets each
  * as a secure, serializable cookie. It supports both raw string/number
  * fields and structured fields with custom `setter` functions for transforming

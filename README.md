@@ -210,9 +210,6 @@ export default defineEventHandler(async (event) => {
     event,
   );
 
-  // state.instanceKey will contain the tenant/instance info if it was a scoped login
-  console.log('Instance:', state.instanceKey); // e.g., "tenant-a" or undefined
-
   return sendRedirect(event, state.redirectTo || '/');
 });
 ```

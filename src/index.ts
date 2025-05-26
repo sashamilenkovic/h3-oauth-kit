@@ -216,7 +216,6 @@ export function handleOAuthLogin<P extends OAuthProvider>(
   maybeEvent?: H3Event,
 ): EventHandler | Promise<{ url: string } | void> {
   const isScoped = typeof instanceKey === 'string';
-
   const resolvedInstanceKey = isScoped ? instanceKey : undefined;
 
   const options = isScoped
@@ -368,8 +367,6 @@ export function handleOAuthCallback<P extends OAuthProvider>(
 
       verifyStateParam(evt, parsedState);
 
-      const providerKey = getProviderKey(provider, parsedState.instanceKey);
-
       const config = parsedState.instanceKey
         ? getOAuthProviderConfig(provider, parsedState.instanceKey)
         : getOAuthProviderConfig(provider);
@@ -381,7 +378,7 @@ export function handleOAuthCallback<P extends OAuthProvider>(
         rawTokens,
         provider,
         options?.cookieOptions,
-        providerKey,
+        parsedState.instanceKey,
       );
 
       const redirectTo = options?.redirectTo || '/';

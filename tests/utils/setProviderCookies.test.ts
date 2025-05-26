@@ -332,4 +332,61 @@ describe('setProviderCookies', () => {
     expect(customExpiresCookie).toBeDefined();
     expect(customExpiresCookie?.[2]).toBe('transformed_7200');
   });
+
+  it('never creates malformed cookie names when instanceKey is undefined', () => {
+    const event = createMockEvent();
+    const tokens = {
+      access_token: 'Bearer test-token',
+      refresh_token: 'test-refresh',
+      token_type: 'bearer' as const,
+      expires_in: 3600,
+      ext_expires_in: 7200,
+      scope: 'read write',
+      id_token: 'test-id-token',
+    };
+
+    // This should create cookies with "azure_" prefix, not "azure:azure_"
+    setProviderCookies(event, tokens, 'azure', undefined, undefined);
+
+    const cookieCalls = (setCookie as unknown as Mock).mock.calls;
+    const cookieNames = cookieCalls.map(([, name]) => name);
+
+    // Verify no cookie names have the malformed "azure:azure_" pattern
+    expect(cookieNames).not.toContain('azure:azure_access_token');
+    expect(cookieNames).not.toContain('azure:azure_refresh_token');
+    expect(cookieNames).not.toContain('azure:azure_access_token_expires_at');
+
+    // Verify correct cookie names are used
+    expect(cookieNames).toContain('azure_access_token');
+    expect(cookieNames).toContain('azure_refresh_token');
+    expect(cookieNames).toContain('azure_access_token_expires_at');
+  });
+
+  it('creates properly scoped cookie names when instanceKey is provided', () => {
+    const event = createMockEvent();
+    const tokens = {
+      access_token: 'Bearer scoped-token',
+      refresh_token: 'scoped-refresh',
+      token_type: 'bearer' as const,
+      expires_in: 3600,
+      ext_expires_in: 7200,
+      scope: 'read write',
+      id_token: 'scoped-id-token',
+    };
+
+    setProviderCookies(event, tokens, 'azure', undefined, 'smithlaw');
+
+    const cookieCalls = (setCookie as unknown as Mock).mock.calls;
+    const cookieNames = cookieCalls.map(([, name]) => name);
+
+    // Verify correct scoped cookie names are used
+    expect(cookieNames).toContain('azure:smithlaw_access_token');
+    expect(cookieNames).toContain('azure:smithlaw_refresh_token');
+    expect(cookieNames).toContain('azure:smithlaw_access_token_expires_at');
+
+    // Verify no unscoped names are created
+    expect(cookieNames).not.toContain('azure_access_token');
+    expect(cookieNames).not.toContain('azure_refresh_token');
+    expect(cookieNames).not.toContain('azure_access_token_expires_at');
+  });
 });

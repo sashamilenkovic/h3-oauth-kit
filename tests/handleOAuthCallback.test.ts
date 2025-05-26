@@ -553,3 +553,168 @@ describe('handleOAuthCallback as route handler', () => {
     expect(mockSendRedirect).not.toHaveBeenCalled();
   });
 });
+
+describe('handleOAuthCallback - scoped provider integration', () => {
+  const config = {
+    clientId: 'test-client-id',
+    clientSecret: 'test-secret',
+    tokenEndpoint: 'https://example.com/token',
+    authorizeEndpoint: 'https://example.com/auth',
+    redirectUri: 'https://myapp.com/callback',
+    scopes: ['read', 'write'],
+    tenantId: 'test-tenant-id',
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    registerOAuthProvider('azure', 'smithlaw', config);
+
+    // Reset setProviderCookies mock to default behavior
+    mockSetProviderCookies.mockImplementation((_, tokens) => tokens);
+  });
+
+  it('correctly handles scoped provider state and sets cookies with proper instanceKey', async () => {
+    const csrf = 'csrf-scoped-test';
+    const event = createMockEvent();
+
+    // Create state that includes instanceKey (as would be created by resolveState)
+    const encodedState = encodeState({
+      csrf,
+      providerKey: 'azure:smithlaw',
+      instanceKey: 'smithlaw',
+    });
+
+    mockGetQuery.mockReturnValue({
+      code: 'auth-code-scoped',
+      state: encodedState,
+    });
+
+    const mockTokens = {
+      access_token: 'Bearer scoped-access-token',
+      refresh_token: 'scoped-refresh-token',
+      expires_in: 3600,
+      token_type: 'Bearer',
+      ext_expires_in: 7200,
+    };
+
+    mockOfetch.mockResolvedValue(mockTokens);
+    mockOAuthStateCookie('azure:smithlaw', csrf);
+
+    const result = await handleOAuthCallback(
+      'azure',
+      { redirect: false },
+      event,
+    );
+
+    // Verify that setProviderCookies was called with the correct instanceKey
+    expect(mockSetProviderCookies).toHaveBeenCalledWith(
+      event,
+      mockTokens,
+      'azure',
+      undefined,
+      'smithlaw', // This should be the extracted instanceKey, not undefined
+    );
+
+    expect(result.tokens).toEqual(mockTokens);
+    expect(result.state.instanceKey).toBe('smithlaw');
+    expect(result.state.providerKey).toBe('azure:smithlaw');
+  });
+
+  it('correctly handles non-scoped provider state and sets cookies without instanceKey', async () => {
+    // Register a non-scoped provider
+    registerOAuthProvider('azure', config);
+
+    const csrf = 'csrf-non-scoped-test';
+    const event = createMockEvent();
+
+    // Create state without instanceKey (as would be created by resolveState for non-scoped)
+    const encodedState = encodeState({
+      csrf,
+      providerKey: 'azure',
+    });
+
+    mockGetQuery.mockReturnValue({
+      code: 'auth-code-non-scoped',
+      state: encodedState,
+    });
+
+    const mockTokens = {
+      access_token: 'Bearer non-scoped-access-token',
+      refresh_token: 'non-scoped-refresh-token',
+      expires_in: 3600,
+      token_type: 'Bearer',
+      ext_expires_in: 7200,
+    };
+
+    mockOfetch.mockResolvedValue(mockTokens);
+    mockOAuthStateCookie('azure', csrf);
+
+    const result = await handleOAuthCallback(
+      'azure',
+      { redirect: false },
+      event,
+    );
+
+    // Verify that setProviderCookies was called without instanceKey
+    expect(mockSetProviderCookies).toHaveBeenCalledWith(
+      event,
+      mockTokens,
+      'azure',
+      undefined,
+      undefined, // instanceKey should be undefined for non-scoped providers
+    );
+
+    expect(result.tokens).toEqual(mockTokens);
+    expect(result.state.instanceKey).toBeUndefined();
+    expect(result.state.providerKey).toBe('azure');
+  });
+
+  it('fails gracefully when state is missing instanceKey but providerKey suggests scoped provider', async () => {
+    const csrf = 'csrf-malformed-state';
+    const event = createMockEvent();
+
+    // Create malformed state that has scoped providerKey but missing instanceKey
+    // This simulates the bug scenario before the fix
+    const encodedState = encodeState({
+      csrf,
+      providerKey: 'azure:smithlaw',
+      // instanceKey is missing - this would cause the bug
+    });
+
+    mockGetQuery.mockReturnValue({
+      code: 'auth-code-malformed',
+      state: encodedState,
+    });
+
+    const mockTokens = {
+      access_token: 'Bearer malformed-access-token',
+      refresh_token: 'malformed-refresh-token',
+      expires_in: 3600,
+      token_type: 'Bearer',
+      ext_expires_in: 7200,
+    };
+
+    mockOfetch.mockResolvedValue(mockTokens);
+    mockOAuthStateCookie('azure:smithlaw', csrf);
+
+    const result = await handleOAuthCallback(
+      'azure',
+      { redirect: false },
+      event,
+    );
+
+    // Even with malformed state, setProviderCookies should be called with undefined instanceKey
+    // The system should handle this gracefully rather than creating malformed cookie names
+    expect(mockSetProviderCookies).toHaveBeenCalledWith(
+      event,
+      mockTokens,
+      'azure',
+      undefined,
+      undefined, // instanceKey should be undefined when missing from state
+    );
+
+    expect(result.tokens).toEqual(mockTokens);
+    expect(result.state.instanceKey).toBeUndefined();
+    expect(result.state.providerKey).toBe('azure:smithlaw');
+  });
+});

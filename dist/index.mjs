@@ -160,16 +160,25 @@ function buildAuthUrl({
   url.searchParams.set("state", state);
   return url.toString();
 }
+function parseProviderKey(providerKey, delimiter = ":") {
+  const parts = providerKey.split(delimiter);
+  if (parts.length === 1) {
+    return { provider: parts[0] };
+  }
+  return { provider: parts[0], instanceKey: parts[1] };
+}
 function resolveState(event, providerKey, userState) {
   const resolved = typeof userState === "function" ? userState(event) : userState ?? {};
   if (typeof resolved !== "object" || resolved === null || Array.isArray(resolved)) {
     throw new TypeError("OAuth state must be a plain object");
   }
   const csrf = crypto.randomUUID();
+  const { provider: _provider, instanceKey } = parseProviderKey(providerKey);
   const stateObject = {
     ...resolved,
     csrf,
-    providerKey
+    providerKey,
+    ...instanceKey && { instanceKey }
   };
   const encodedState = encodeURIComponent(
     Buffer.from(JSON.stringify(stateObject)).toString("base64url")
@@ -272,7 +281,7 @@ function parseTokenField(raw) {
   return /^\d+$/.test(raw) ? parseInt(raw, 10) : raw;
 }
 async function oAuthTokensAreValid(event, provider, instanceKey) {
-  const providerKey = instanceKey ? `${provider}:${instanceKey}` : provider;
+  const providerKey = getProviderKey(provider, instanceKey);
   const access_token = getCookie(event, `${providerKey}_access_token`);
   const refresh_token = getCookie(event, `${providerKey}_refresh_token`);
   const access_token_expires_at = getCookie(
@@ -446,11 +455,8 @@ function handleOAuthLogin(provider, instanceKey, optionsOrEvent, maybeEvent) {
   const event = isScoped ? maybeEvent : optionsOrEvent;
   const handler = async (evt) => {
     const config = resolvedInstanceKey ? getOAuthProviderConfig(provider, resolvedInstanceKey) : getOAuthProviderConfig(provider);
-    const state = resolveState(
-      evt,
-      resolvedInstanceKey ? `${provider}:${resolvedInstanceKey}` : provider,
-      options?.state
-    );
+    const providerKey = getProviderKey(provider, resolvedInstanceKey);
+    const state = resolveState(evt, providerKey, options?.state);
     const authUrl = buildAuthUrl({
       authorizeEndpoint: config.authorizeEndpoint,
       clientId: config.clientId,
@@ -510,7 +516,7 @@ function handleOAuthCallback(provider, options, event) {
       const { statusCode, message } = await parseError(error);
       throw createError({
         statusCode,
-        statusMessage: message,
+        message,
         cause: error
       });
     }
@@ -619,8 +625,11 @@ function deleteProviderCookies(event, provider, instanceKey) {
   }
 }
 function handleOAuthLogout(providers, options, event) {
+  const normalized = providers.map(
+    (p) => typeof p === "string" ? { provider: p } : p
+  );
   const handler = async (evt) => {
-    for (const { provider, instanceKey } of providers) {
+    for (const { provider, instanceKey } of normalized) {
       deleteProviderCookies(evt, provider, instanceKey);
     }
     if (options?.redirectTo) {
@@ -629,7 +638,7 @@ function handleOAuthLogout(providers, options, event) {
     }
     return {
       loggedOut: true,
-      providers
+      providers: normalized
     };
   };
   return event ? handler(event) : defineEventHandler(handler);
