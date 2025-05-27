@@ -1,3 +1,10 @@
+# [0.6.0](https://github.com/sashamilenkovic/h3-oauth-kit/compare/v0.5.0...v0.6.0) (2025-05-27)
+
+
+### Features
+
+* implement multi-instance oauth with preserve mode and dynamic oauth key resolution ([c2131da](https://github.com/sashamilenkovic/h3-oauth-kit/commit/c2131da72b105efd12d0adf1f6f0cf5cec8d0095))
+
 # [0.5.0](https://github.com/sashamilenkovic/h3-oauth-kit/compare/v0.4.1...v0.5.0) (2025-05-27)
 
 
