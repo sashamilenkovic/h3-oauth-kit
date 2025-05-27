@@ -44,6 +44,7 @@ import {
   getProviderKey,
   parseProviderKey,
   clearNonPreservedCookies,
+  discoverProviderInstance,
 } from './utils';
 
 /**
@@ -552,16 +553,31 @@ export function defineProtectedRoute<
       const provider = isScoped ? def.provider : def;
 
       try {
-        // Resolve instanceKey: use explicit instanceKey if provided, otherwise call resolveInstance
+        // Resolve instanceKey: use explicit instanceKey or instanceResolver
         let instanceKey: string | undefined;
         if (isScoped) {
-          instanceKey = def.instanceKey;
-        } else if (options?.resolveInstance) {
-          instanceKey = await options.resolveInstance(event, provider);
+          if ('instanceKey' in def) {
+            instanceKey = def.instanceKey;
+          } else if ('instanceResolver' in def) {
+            instanceKey = await def.instanceResolver(event);
+          }
         }
 
-        const providerKey = getProviderKey(provider, instanceKey);
-        const result = await oAuthTokensAreValid(event, provider, instanceKey);
+        let providerKey = getProviderKey(provider, instanceKey);
+        let result = await oAuthTokensAreValid(event, provider, instanceKey);
+
+        // If no result and this is a string provider, try auto-discovery
+        if (!result && !isScoped) {
+          const discoveredInstanceKey = discoverProviderInstance(
+            event,
+            provider,
+          );
+          if (discoveredInstanceKey) {
+            instanceKey = discoveredInstanceKey;
+            providerKey = getProviderKey(provider, instanceKey);
+            result = await oAuthTokensAreValid(event, provider, instanceKey);
+          }
+        }
 
         if (!result) {
           const error = createError({
@@ -752,6 +768,107 @@ export function handleOAuthLogout(
   };
 
   return event ? handler(event) : defineEventHandler(handler);
+}
+
+/**
+ * @internal
+ *
+ * Gets the discovered provider tokens from the context, handling both global and scoped instances.
+ *
+ * This utility helps when you need to access tokens that were auto-discovered by defineProtectedRoute
+ * but don't know the exact instance key that was used.
+ *
+ * @param context - The h3OAuthKit context from the event
+ * @param provider - The OAuth provider to get tokens for
+ * @returns Object with the tokens and the discovered key, or undefined if not found
+ */
+export function getDiscoveredProviderTokens<P extends OAuthProvider>(
+  context: Record<string, unknown>,
+  provider: P,
+): { tokens: OAuthProviderTokenMap[P]; key: string } | undefined {
+  // First try global provider
+  if (context[provider]) {
+    return {
+      tokens: context[provider] as OAuthProviderTokenMap[P],
+      key: provider,
+    };
+  }
+
+  // Then try scoped instances
+  for (const [key, tokens] of Object.entries(context)) {
+    if (key.startsWith(`${provider}:`)) {
+      return { tokens: tokens as OAuthProviderTokenMap[P], key };
+    }
+  }
+
+  return undefined;
+}
+
+/**
+ * Creates a typed instance resolver that helps TypeScript understand what instance key
+ * your resolver function will return, enabling better type safety when accessing tokens.
+ *
+ * @example
+ * ```typescript
+ * const resolver = typedInstanceResolver<"smithlaw">((event) => {
+ *   const { firmId } = getRouterParams(event);
+ *   return firmId === "smith" ? "smithlaw" : undefined;
+ * });
+ *
+ * defineProtectedRoute([
+ *   { provider: "clio", instanceResolver: resolver }
+ * ], async (event) => {
+ *   // TypeScript knows about 'clio:smithlaw'
+ *   const tokens = event.context.h3OAuthKit['clio:smithlaw'];
+ * });
+ * ```
+ *
+ * @param resolver - The instance resolver function
+ * @returns The same resolver function with enhanced type information
+ */
+export function typedInstanceResolver<T extends string>(
+  resolver: (event: H3Event) => T | undefined | Promise<T | undefined>,
+): (event: H3Event) => T | undefined | Promise<T | undefined> {
+  return resolver;
+}
+
+/**
+ * Creates a provider definition with explicit instance keys for better type safety.
+ * This allows TypeScript to know about the resolved instance keys at compile time.
+ *
+ * @example
+ * ```typescript
+ * defineProtectedRoute([
+ *   "azure",
+ *   withInstanceKeys("clio", ["LOAG", "smithlaw"], (event) => {
+ *     const { clioClientId } = getRouterParams(event);
+ *     return clioClientId === "LOAG" ? "LOAG" : "smithlaw";
+ *   })
+ * ], async (event) => {
+ *   // TypeScript knows about both 'clio:LOAG' and 'clio:smithlaw'
+ *   const tokens = event.context.h3OAuthKit['clio:LOAG'];
+ * });
+ * ```
+ */
+export function withInstanceKeys<
+  P extends OAuthProvider,
+  K extends readonly string[],
+>(
+  provider: P,
+  instanceKeys: K,
+  resolver: (
+    event: H3Event,
+  ) => K[number] | undefined | Promise<K[number] | undefined>,
+): {
+  provider: P;
+  instanceResolver: typeof resolver;
+  __instanceKeys: K;
+} {
+  return {
+    provider,
+    instanceResolver: resolver,
+    __instanceKeys: instanceKeys,
+  };
 }
 
 export * from './types';

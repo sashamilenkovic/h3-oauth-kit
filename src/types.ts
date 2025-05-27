@@ -180,7 +180,7 @@ export interface HandleOAuthCallbackOptions {
   cookieOptions?: CookieOptionsOverride;
 }
 
-export interface ProtectedRouteOptions<InstanceKeys extends string = string> {
+export interface ProtectedRouteOptions<_InstanceKeys extends string = never> {
   cookieOptions?: CookieOptionsOverride;
   onAuthFailure?: (
     event: H3Event,
@@ -191,10 +191,6 @@ export interface ProtectedRouteOptions<InstanceKeys extends string = string> {
       | 'error-occurred',
     error: unknown,
   ) => Promise<unknown> | unknown;
-  resolveInstance?: (
-    event: H3Event,
-    provider: OAuthProvider,
-  ) => Promise<InstanceKeys | undefined> | InstanceKeys | undefined;
 }
 
 // Add new interface for login options
@@ -283,14 +279,34 @@ export type ExtractInstanceKey<P> = P extends { instanceKey: infer I }
   ? I
   : undefined;
 
-export type ScopedProvider = { provider: OAuthProvider; instanceKey?: string };
+export type ScopedProvider =
+  | { provider: OAuthProvider; instanceKey: string }
+  | {
+      provider: OAuthProvider;
+      instanceResolver: (
+        event: H3Event,
+      ) => string | undefined | Promise<string | undefined>;
+    }
+  | {
+      provider: OAuthProvider;
+      instanceResolver: (
+        event: H3Event,
+      ) => string | undefined | Promise<string | undefined>;
+      __instanceKeys: readonly string[];
+    };
 
 export type GetProviderKey<P> = P extends string
   ? P
-  : P extends { provider: infer T; instanceKey?: infer I }
+  : P extends { provider: infer T; instanceKey: infer I }
   ? I extends string
     ? `${T & string}:${I & string}`
+    : never
+  : P extends { provider: infer T; __instanceKeys: readonly (infer K)[] }
+  ? K extends string
+    ? `${T & string}:${K}` | (T & string)
     : T & string
+  : P extends { provider: infer T; instanceResolver: unknown }
+  ? T & string // For instanceResolver without explicit keys, we can only know the base provider at compile time
   : never;
 
 export type ProviderId<P> = P extends string

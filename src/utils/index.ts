@@ -1120,3 +1120,81 @@ export function clearNonPreservedCookies(
     deleteCookie(event, cookieName);
   }
 }
+
+/**
+ * @internal
+ *
+ * Auto-discovers available instances for a provider by scanning cookies.
+ *
+ * This function is used when a string provider (e.g., 'clio') is specified
+ * without an explicit instanceKey or resolveInstance function. It will:
+ * 1. First check for global provider cookies (e.g., clio_access_token)
+ * 2. If not found, scan for scoped instance cookies (e.g., clio:loag_access_token)
+ * 3. Return the first available instance or undefined if none found
+ *
+ * @param event - The H3 event containing cookies
+ * @param provider - The OAuth provider to scan for
+ * @returns The discovered instanceKey or undefined if none found
+ */
+export function discoverProviderInstance(
+  event: H3Event,
+  provider: OAuthProvider,
+): string | undefined {
+  // First try global provider
+  const globalKey = `${provider}_access_token`;
+  if (getCookie(event, globalKey)) {
+    return undefined; // Global provider found, no instanceKey needed
+  }
+
+  // Scan for scoped instances by looking at all cookies
+  const cookies = event.node.req.headers.cookie;
+  if (!cookies) return undefined;
+
+  const cookiePattern = new RegExp(`${provider}:([^_]+)_access_token=`);
+  const matches = cookies.match(cookiePattern);
+
+  if (matches && matches[1]) {
+    return matches[1]; // Return the first discovered instanceKey
+  }
+
+  return undefined;
+}
+
+/**
+ * Creates a provider definition with explicit instance keys for better type safety.
+ * This allows TypeScript to know about the resolved instance keys at compile time.
+ *
+ * @example
+ * ```typescript
+ * defineProtectedRoute([
+ *   "azure",
+ *   withInstanceKeys("clio", ["LOAG", "smithlaw"], (event) => {
+ *     const { clioClientId } = getRouterParams(event);
+ *     return clioClientId === "LOAG" ? "LOAG" : "smithlaw";
+ *   })
+ * ], async (event) => {
+ *   // TypeScript knows about both 'clio:LOAG' and 'clio:smithlaw'
+ *   const tokens = event.context.h3OAuthKit['clio:LOAG'];
+ * });
+ * ```
+ */
+export function withInstanceKeys<
+  P extends OAuthProvider,
+  K extends readonly string[],
+>(
+  provider: P,
+  instanceKeys: K,
+  resolver: (
+    event: H3Event,
+  ) => K[number] | undefined | Promise<K[number] | undefined>,
+): {
+  provider: P;
+  instanceResolver: typeof resolver;
+  __instanceKeys: K;
+} {
+  return {
+    provider,
+    instanceResolver: resolver,
+    __instanceKeys: instanceKeys,
+  };
+}
