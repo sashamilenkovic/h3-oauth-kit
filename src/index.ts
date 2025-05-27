@@ -112,6 +112,7 @@ export function registerOAuthProvider<P extends OAuthProvider>(
  * @template P - The OAuth provider key (e.g., `"clio"`, `"intuit"`).
  * @param provider - The provider identifier.
  * @param instanceKey - Optional key to retrieve a specific instance's config.
+ *
  * @returns The corresponding OAuth configuration object.
  * @throws {Error} If the provider config is not registered.
  */
@@ -128,7 +129,7 @@ export function getOAuthProviderConfig<P extends OAuthProvider>(
   provider: P,
   instanceKey?: string,
 ): OAuthProviderConfigMap[P] {
-  const key = instanceKey ? `${provider}:${instanceKey}` : provider;
+  const key = getProviderKey(provider, instanceKey);
 
   const config = providerRegistry.get(key);
 
@@ -140,6 +141,23 @@ export function getOAuthProviderConfig<P extends OAuthProvider>(
   }
 
   return config as OAuthProviderConfigMap[P];
+}
+
+/**
+ * Checks if a provider configuration is registered.
+ *
+ * @param provider - The provider key.
+ * @param instanceKey - Optional instance key.
+ *
+ * @returns `true` if the provider is registered, `false` otherwise.
+ */
+export function hasOAuthProviderConfig<P extends OAuthProvider>(
+  provider: P,
+  instanceKey?: string,
+): boolean {
+  const key = getProviderKey(provider, instanceKey);
+
+  return providerRegistry.has(key);
 }
 
 /**
