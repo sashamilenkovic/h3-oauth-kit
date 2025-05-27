@@ -1,3 +1,10 @@
+# [0.7.0](https://github.com/sashamilenkovic/h3-oauth-kit/compare/v0.6.0...v0.7.0) (2025-05-27)
+
+
+### Features
+
+* remove resolveInstance option in favor of withInstanceKeys helper ([e92b725](https://github.com/sashamilenkovic/h3-oauth-kit/commit/e92b725ea17ad05a42f9bb204d4731b1138aeb1a))
+
 # [0.6.0](https://github.com/sashamilenkovic/h3-oauth-kit/compare/v0.5.0...v0.6.0) (2025-05-27)
 
 
