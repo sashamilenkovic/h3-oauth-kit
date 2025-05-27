@@ -1,3 +1,10 @@
+# [0.5.0](https://github.com/sashamilenkovic/h3-oauth-kit/compare/v0.4.1...v0.5.0) (2025-05-27)
+
+
+### Features
+
+* adds utility function for checking if oauthprovider config exists ([db1c603](https://github.com/sashamilenkovic/h3-oauth-kit/commit/db1c6036481f6463543625cf3360b91dd3575d8c))
+
 ## [0.4.1](https://github.com/sashamilenkovic/h3-oauth-kit/compare/v0.4.0...v0.4.1) (2025-05-26)
 
 
