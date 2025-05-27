@@ -309,21 +309,48 @@ export function buildAuthUrl({
 /**
  * @internal
  *
- * Parses a provider key into its base provider and optional instance key components.
+ * Parses a provider key into its components.
  *
- * @param providerKey - The full provider key (e.g., "azure" or "azure:smithlaw")
- * @param delimiter - The delimiter used to separate provider and instance (default: ":")
- * @returns An object with the base provider and optional instanceKey
+ * @param providerKey - The full provider key (e.g., "clio:smithlaw:preserve")
+ * @param delimiter - The delimiter used to separate components (default: ":")
+ * @returns An object with the base provider, optional instanceKey, and preserveInstance flag
  */
-function parseProviderKey(
+export function parseProviderKey(
   providerKey: string,
   delimiter: string = ':',
-): { provider: string; instanceKey?: string } {
+): {
+  provider: string;
+  instanceKey?: string;
+  preserveInstance: boolean;
+} {
   const parts = providerKey.split(delimiter);
+
   if (parts.length === 1) {
-    return { provider: parts[0] };
+    return { provider: parts[0], preserveInstance: false };
   }
-  return { provider: parts[0], instanceKey: parts[1] };
+
+  if (parts.length === 2) {
+    // Could be "clio:smithlaw" or "clio:preserve"
+    if (parts[1] === 'preserve') {
+      return { provider: parts[0], preserveInstance: true };
+    }
+    return {
+      provider: parts[0],
+      instanceKey: parts[1],
+      preserveInstance: false,
+    };
+  }
+
+  if (parts.length === 3 && parts[2] === 'preserve') {
+    return {
+      provider: parts[0],
+      instanceKey: parts[1],
+      preserveInstance: true,
+    };
+  }
+
+  // Fallback for malformed keys
+  return { provider: parts[0], instanceKey: parts[1], preserveInstance: false };
 }
 
 /**
@@ -917,11 +944,9 @@ export function getProviderCookieKeys(
 ): string[] {
   const providerKey = instanceKey ? `${provider}:${instanceKey}` : provider;
 
-  const base = [
-    `${providerKey}_access_token`,
-    `${providerKey}_refresh_token`,
-    `${providerKey}_access_token_expires_at`,
-  ];
+  const base = providerConfig[provider].baseCookieFields.map(
+    (field) => `${providerKey}_${field}`,
+  );
 
   const specific = providerConfig[provider].providerSpecificFields.map(
     (field) => {
@@ -935,6 +960,60 @@ export function getProviderCookieKeys(
   );
 
   return [...base, ...specific];
+}
+
+/**
+ * @internal
+ *
+ * Generates all possible cookie key patterns that this library could create for a provider.
+ *
+ * This includes:
+ * - Base cookie patterns (access_token, refresh_token, etc.)
+ * - Provider-specific field patterns
+ * - Both global and scoped instance patterns
+ *
+ * Used for intelligent wildcard deletion that only removes cookies we know we created.
+ *
+ * @param provider - The OAuth provider (e.g., "clio", "azure", "intuit").
+ * @returns An array of regex patterns that match cookies created by this library.
+ */
+export function getProviderCookiePatterns(provider: OAuthProvider): RegExp[] {
+  const patterns: RegExp[] = [];
+
+  // Base cookie patterns for both global and scoped instances
+  for (const field of providerConfig[provider].baseCookieFields) {
+    const suffix = `_${field}`;
+    // Global pattern: clio_access_token
+    patterns.push(new RegExp(`^${provider}${suffix.replace('_', '\\_')}$`));
+    // Scoped pattern: clio:instanceKey_access_token
+    patterns.push(
+      new RegExp(`^${provider}:[^_]+${suffix.replace('_', '\\_')}$`),
+    );
+  }
+
+  // Provider-specific field patterns
+  for (const field of providerConfig[provider].providerSpecificFields) {
+    const cookieName =
+      typeof field === 'string'
+        ? `${provider}_${field}`
+        : field.cookieName ?? `${provider}_${String(field.key)}`;
+
+    // Extract the suffix part (everything after provider_)
+    const suffix = cookieName.replace(`${provider}_`, '_');
+
+    // Global pattern: clio_token_type
+    patterns.push(new RegExp(`^${provider}${suffix.replace('_', '\\_')}$`));
+    // Scoped pattern: clio:instanceKey_token_type
+    patterns.push(
+      new RegExp(`^${provider}:[^_]+${suffix.replace('_', '\\_')}$`),
+    );
+  }
+
+  // CSRF cookie patterns (oauth_csrf_provider and oauth_csrf_provider:instanceKey)
+  patterns.push(new RegExp(`^oauth_csrf_${provider}$`));
+  patterns.push(new RegExp(`^oauth_csrf_${provider}:[^_]+$`));
+
+  return patterns;
 }
 
 /**
@@ -995,16 +1074,49 @@ function resolveProviderFieldMeta<P extends OAuthProvider>(
  * The returned key is used for namespacing cookies and CSRF tokens.
  * By default, the format is `${provider}:${instanceKey}`.
  *
- * You can customize the delimiter globally later by abstracting this.
+ * When preserveInstance is true, it appends `:preserve` to indicate
+ * that this login should use scoped cookies rather than replacing
+ * the global provider cookies.
  *
  * @param provider - The base OAuth provider name (e.g. "clio").
  * @param instanceKey - Optional instance key (e.g. "smithlaw").
- * @returns A full provider key (e.g. "clio:smithlaw" or "clio")
+ * @param preserveInstance - Whether this should use preserve mode.
+ * @param delimiter - The delimiter used to separate components (default: ":").
+ * @returns A full provider key (e.g. "clio:smithlaw:preserve" or "clio")
  */
 export function getProviderKey(
   provider: string,
   instanceKey?: string,
+  preserveInstance?: boolean,
   delimiter: string = ':',
 ): string {
-  return instanceKey ? `${provider}${delimiter}${instanceKey}` : provider;
+  let key = instanceKey ? `${provider}${delimiter}${instanceKey}` : provider;
+
+  if (preserveInstance) {
+    key += `${delimiter}preserve`;
+  }
+
+  return key;
+}
+
+/**
+ * @internal
+ *
+ * Clears non-preserved cookies for a provider when setting tokens in single-instance mode.
+ *
+ * This function is called when `preserveInstance` is false (default behavior) to ensure
+ * that only one "current" instance is active at a time. It clears the global provider
+ * cookies (e.g., `clio_*`) but leaves scoped instance cookies (e.g., `clio:smithlaw_*`) intact.
+ *
+ * @param event - The H3 event to clear cookies from.
+ * @param provider - The OAuth provider (e.g., "clio", "azure", "intuit").
+ */
+export function clearNonPreservedCookies(
+  event: H3Event,
+  provider: OAuthProvider,
+): void {
+  // Clear global provider cookies (e.g., clio_access_token, clio_refresh_token)
+  for (const cookieName of getProviderCookieKeys(provider)) {
+    deleteCookie(event, cookieName);
+  }
 }

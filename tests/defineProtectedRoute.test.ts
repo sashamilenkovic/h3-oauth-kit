@@ -3,6 +3,7 @@ import type {
   AzureAuthTokens,
   AzureRefreshTokenResponse,
   TokenValidationResult,
+  OAuthProvider,
 } from '../src/types';
 import { defineProtectedRoute, registerOAuthProvider } from '../src';
 import { createMockEvent } from './utils';
@@ -739,5 +740,335 @@ describe('defineProtectedRoute (multi-provider)', () => {
       'error-occurred',
       expect.any(Error),
     );
+  });
+
+  describe('resolveInstance functionality', () => {
+    beforeEach(() => {
+      vi.clearAllMocks();
+      registerOAuthProvider('clio', clioConfig);
+      registerOAuthProvider('clio', 'smithlaw', clioConfig);
+      registerOAuthProvider('clio', 'bigfirm', clioConfig);
+    });
+
+    it('calls resolveInstance for string providers and uses returned instanceKey', async () => {
+      const event = createMockEvent();
+      const mockResolveInstance = vi.fn().mockResolvedValue('smithlaw');
+
+      mockTokensValid.mockResolvedValue({
+        status: 'valid',
+        tokens: {
+          access_token: 'token-clio:smithlaw',
+          refresh_token: 'refresh',
+          expires_in: 3600,
+          token_type: 'bearer',
+          client_id: 'client-123',
+        },
+      } as TokenValidationResult<'clio'>);
+
+      const handler = defineProtectedRoute(
+        ['clio'], // String provider - should trigger resolveInstance
+        async (evt) => ({
+          token: (evt.context.h3OAuthKit as any)['clio:smithlaw'].access_token,
+        }),
+        {
+          resolveInstance: mockResolveInstance,
+        },
+      );
+
+      const result = await handler(event);
+
+      expect(result).toEqual({ token: 'token-clio:smithlaw' });
+      expect(mockResolveInstance).toHaveBeenCalledWith(event, 'clio');
+      expect(mockTokensValid).toHaveBeenCalledWith(event, 'clio', 'smithlaw');
+    });
+
+    it('does not call resolveInstance for scoped providers with explicit instanceKey', async () => {
+      const event = createMockEvent();
+      const mockResolveInstance = vi.fn().mockResolvedValue('shouldnotbeused');
+
+      mockTokensValid.mockResolvedValue({
+        status: 'valid',
+        tokens: {
+          access_token: 'token-clio:bigfirm',
+          refresh_token: 'refresh',
+          expires_in: 3600,
+          token_type: 'bearer',
+          client_id: 'client-123',
+        },
+      } as TokenValidationResult<'clio'>);
+
+      const handler = defineProtectedRoute(
+        [{ provider: 'clio', instanceKey: 'bigfirm' }], // Explicit instanceKey - should NOT trigger resolveInstance
+        async (evt) => ({
+          token: evt.context.h3OAuthKit['clio:bigfirm'].access_token,
+        }),
+        {
+          resolveInstance: mockResolveInstance,
+        },
+      );
+
+      const result = await handler(event);
+
+      expect(result).toEqual({ token: 'token-clio:bigfirm' });
+      expect(mockResolveInstance).not.toHaveBeenCalled();
+      expect(mockTokensValid).toHaveBeenCalledWith(event, 'clio', 'bigfirm');
+    });
+
+    it('handles resolveInstance returning undefined (uses global provider)', async () => {
+      const event = createMockEvent();
+      const mockResolveInstance = vi.fn().mockResolvedValue(undefined);
+
+      mockTokensValid.mockResolvedValue({
+        status: 'valid',
+        tokens: {
+          access_token: 'token-clio-global',
+          refresh_token: 'refresh',
+          expires_in: 3600,
+          token_type: 'bearer',
+          client_id: 'client-123',
+        },
+      } as TokenValidationResult<'clio'>);
+
+      const handler = defineProtectedRoute(
+        ['clio'],
+        async (evt) => ({
+          token: evt.context.h3OAuthKit['clio'].access_token,
+        }),
+        {
+          resolveInstance: mockResolveInstance,
+        },
+      );
+
+      const result = await handler(event);
+
+      expect(result).toEqual({ token: 'token-clio-global' });
+      expect(mockResolveInstance).toHaveBeenCalledWith(event, 'clio');
+      expect(mockTokensValid).toHaveBeenCalledWith(event, 'clio', undefined);
+    });
+
+    it('works with mixed provider definitions (some with resolveInstance, some explicit)', async () => {
+      const event = createMockEvent();
+      const mockResolveInstance = vi
+        .fn()
+        .mockImplementation(async (_evt, provider) => {
+          if (provider === 'clio') return 'smithlaw';
+          return undefined;
+        });
+
+      // Register azure provider
+      registerOAuthProvider('azure', 'dev', azureConfig);
+
+      mockTokensValid.mockImplementation(
+        async (
+          _event: unknown,
+          provider: OAuthProvider,
+          instanceKey?: string,
+        ): Promise<TokenValidationResult<OAuthProvider>> => {
+          const key = instanceKey ? `${provider}:${instanceKey}` : provider;
+
+          if (provider === 'azure') {
+            return {
+              status: 'valid',
+              tokens: {
+                access_token: `token-${key}`,
+                refresh_token: 'r',
+                expires_in: 3600,
+                token_type: 'bearer',
+                ext_expires_in: 3600,
+                scope: 'user.read',
+                id_token: 'id-token',
+              },
+            } as TokenValidationResult<OAuthProvider>;
+          }
+
+          return {
+            status: 'valid',
+            tokens: {
+              access_token: `token-${key}`,
+              refresh_token: 'r',
+              expires_in: 3600,
+              token_type: 'bearer',
+              client_id: 'client-123',
+            },
+          } as TokenValidationResult<OAuthProvider>;
+        },
+      );
+
+      const handler = defineProtectedRoute(
+        [
+          'clio', // String provider - should use resolveInstance
+          { provider: 'azure', instanceKey: 'dev' }, // Explicit instanceKey - should NOT use resolveInstance
+        ],
+        async (evt) => ({
+          clio: (evt.context.h3OAuthKit as any)['clio:smithlaw'].access_token,
+          azure: evt.context.h3OAuthKit['azure:dev'].access_token,
+        }),
+        {
+          resolveInstance: mockResolveInstance,
+        },
+      );
+
+      const result = await handler(event);
+
+      expect(result).toEqual({
+        clio: 'token-clio:smithlaw',
+        azure: 'token-azure:dev',
+      });
+
+      // Should only call resolveInstance for 'clio', not 'azure'
+      expect(mockResolveInstance).toHaveBeenCalledTimes(1);
+      expect(mockResolveInstance).toHaveBeenCalledWith(event, 'clio');
+
+      expect(mockTokensValid).toHaveBeenCalledWith(event, 'clio', 'smithlaw');
+      expect(mockTokensValid).toHaveBeenCalledWith(event, 'azure', 'dev');
+    });
+
+    it('handles resolveInstance throwing an error', async () => {
+      const event = createMockEvent();
+      const mockResolveInstance = vi
+        .fn()
+        .mockRejectedValue(new Error('Failed to resolve instance'));
+
+      const handler = defineProtectedRoute(
+        ['clio'],
+        async (evt) => ({
+          token: evt.context.h3OAuthKit['clio'].access_token,
+        }),
+        {
+          resolveInstance: mockResolveInstance,
+        },
+      );
+
+      await expect(handler(event)).rejects.toThrow(
+        'Failed to resolve instance',
+      );
+      expect(mockResolveInstance).toHaveBeenCalledWith(event, 'clio');
+    });
+
+    it('handles resolveInstance with onAuthFailure when resolution fails', async () => {
+      const event = createMockEvent();
+      const mockResolveInstance = vi
+        .fn()
+        .mockRejectedValue(new Error('Instance resolution failed'));
+      const mockOnAuthFailure = vi
+        .fn()
+        .mockResolvedValue({ error: 'custom resolution error' });
+
+      const handler = defineProtectedRoute(
+        ['clio'],
+        async (evt) => ({
+          token: evt.context.h3OAuthKit['clio'].access_token,
+        }),
+        {
+          resolveInstance: mockResolveInstance,
+          onAuthFailure: mockOnAuthFailure,
+        },
+      );
+
+      const result = await handler(event);
+
+      expect(result).toEqual({ error: 'custom resolution error' });
+      expect(mockResolveInstance).toHaveBeenCalledWith(event, 'clio');
+      expect(mockOnAuthFailure).toHaveBeenCalledWith(
+        event,
+        'clio',
+        'error-occurred',
+        expect.objectContaining({
+          message: 'Instance resolution failed',
+        }),
+      );
+    });
+
+    it('uses resolved instanceKey for token refresh', async () => {
+      const event = createMockEvent();
+      const mockResolveInstance = vi.fn().mockResolvedValue('smithlaw');
+
+      // Mock expired tokens for the resolved instance
+      mockTokensValid.mockResolvedValue({
+        status: 'expired',
+        tokens: {
+          access_token: 'expired-token',
+          refresh_token: 'valid-refresh',
+          expires_in: 0,
+          token_type: 'bearer',
+          client_id: 'client-123',
+        },
+      } as TokenValidationResult<'clio'>);
+
+      const refreshed = {
+        access_token: 'refreshed-token',
+        refresh_token: 'new-refresh',
+        expires_in: 3600,
+        token_type: 'bearer' as const,
+      };
+
+      const fullToken = {
+        ...refreshed,
+        client_id: 'client-123',
+      };
+
+      mockRefreshToken.mockResolvedValue(refreshed);
+      mockNormalizeRefreshedToken.mockReturnValue(fullToken);
+      mockSetProviderCookies.mockReturnValue(fullToken);
+
+      const handler = defineProtectedRoute(
+        ['clio'], // String provider - should use resolveInstance
+        async (evt) => ({
+          token: (evt.context.h3OAuthKit as any)['clio:smithlaw'].access_token,
+        }),
+        {
+          resolveInstance: mockResolveInstance,
+        },
+      );
+
+      const result = await handler(event);
+
+      expect(result).toEqual({ token: 'refreshed-token' });
+      expect(mockResolveInstance).toHaveBeenCalledWith(event, 'clio');
+      expect(mockTokensValid).toHaveBeenCalledWith(event, 'clio', 'smithlaw');
+
+      // Verify that refreshToken was called with the config from the resolved instance
+      expect(mockRefreshToken).toHaveBeenCalledWith(
+        'valid-refresh',
+        clioConfig, // This should be the config retrieved using resolved instanceKey 'smithlaw'
+        'clio',
+      );
+
+      expect(mockSetProviderCookies).toHaveBeenCalledWith(
+        event,
+        fullToken,
+        'clio',
+        undefined,
+        'smithlaw', // Should use the resolved instanceKey
+      );
+    });
+
+    it('works without resolveInstance option (backward compatibility)', async () => {
+      const event = createMockEvent();
+
+      mockTokensValid.mockResolvedValue({
+        status: 'valid',
+        tokens: {
+          access_token: 'token-clio-global',
+          refresh_token: 'refresh',
+          expires_in: 3600,
+          token_type: 'bearer',
+          client_id: 'client-123',
+        },
+      } as TokenValidationResult<'clio'>);
+
+      const handler = defineProtectedRoute(
+        ['clio'], // String provider without resolveInstance - should use global
+        async (evt) => ({
+          token: evt.context.h3OAuthKit['clio'].access_token,
+        }),
+        // No resolveInstance option
+      );
+
+      const result = await handler(event);
+
+      expect(result).toEqual({ token: 'token-clio-global' });
+      expect(mockTokensValid).toHaveBeenCalledWith(event, 'clio', undefined);
+    });
   });
 });

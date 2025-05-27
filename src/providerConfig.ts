@@ -4,6 +4,11 @@ export const providerConfig: {
   [P in OAuthProvider]: ProviderConfig<P>;
 } = {
   azure: {
+    baseCookieFields: [
+      'access_token',
+      'refresh_token',
+      'access_token_expires_at',
+    ],
     providerSpecificFields: [
       {
         key: 'ext_expires_in',
@@ -15,9 +20,19 @@ export const providerConfig: {
     callbackQueryFields: ['session_state', 'id_token'],
   },
   clio: {
+    baseCookieFields: [
+      'access_token',
+      'refresh_token',
+      'access_token_expires_at',
+    ],
     providerSpecificFields: [],
   },
   intuit: {
+    baseCookieFields: [
+      'access_token',
+      'refresh_token',
+      'access_token_expires_at',
+    ],
     providerSpecificFields: [
       {
         key: 'x_refresh_token_expires_in',

@@ -162,7 +162,7 @@ export type OAuthParsedState = {
   csrf: string;
   providerKey: string;
   instanceKey?: string;
-  [key: string]: string;
+  [key: string]: string | undefined;
 };
 
 export type OAuthStateValue =
@@ -180,7 +180,7 @@ export interface HandleOAuthCallbackOptions {
   cookieOptions?: CookieOptionsOverride;
 }
 
-export interface ProtectedRouteOptions {
+export interface ProtectedRouteOptions<InstanceKeys extends string = string> {
   cookieOptions?: CookieOptionsOverride;
   onAuthFailure?: (
     event: H3Event,
@@ -191,6 +191,17 @@ export interface ProtectedRouteOptions {
       | 'error-occurred',
     error: unknown,
   ) => Promise<unknown> | unknown;
+  resolveInstance?: (
+    event: H3Event,
+    provider: OAuthProvider,
+  ) => Promise<InstanceKeys | undefined> | InstanceKeys | undefined;
+}
+
+// Add new interface for login options
+export interface OAuthLoginOptions {
+  redirect?: boolean;
+  state?: OAuthStateValue;
+  preserveInstance?: boolean;
 }
 
 export interface OAuthErrorResponse {
@@ -257,6 +268,7 @@ export type TokenField<P extends OAuthProvider> =
     };
 
 export interface ProviderConfig<P extends OAuthProvider> {
+  baseCookieFields: (keyof BaseOAuthCookies)[];
   providerSpecificFields: TokenField<P>[];
   callbackQueryFields?: (keyof OAuthCallbackQuery<P>)[];
   validateRefreshTokenExpiry?: boolean;
@@ -289,12 +301,14 @@ export type ProviderId<P> = P extends string
     : never
   : never;
 
-export type AugmentedContext<Defs extends (OAuthProvider | ScopedProvider)[]> =
-  {
-    h3OAuthKit: {
-      [P in Defs[number] as GetProviderKey<P>]: OAuthProviderTokenMap[ProviderId<P>];
-    };
+export type AugmentedContext<
+  Defs extends (OAuthProvider | ScopedProvider)[],
+  _InstanceKeys extends string = never,
+> = {
+  h3OAuthKit: {
+    [P in Defs[number] as GetProviderKey<P>]: OAuthProviderTokenMap[ProviderId<P>];
   };
+};
 
 export type ExtractProvider<P> = P extends { provider: infer T } ? T : P;
 
@@ -308,3 +322,17 @@ export type NormalizedProviders<
 };
 
 export type TokenFor<P extends OAuthProvider> = OAuthProviderTokenMap[P];
+
+export type LogoutProvider = {
+  provider: OAuthProvider;
+  instanceKey?: string;
+};
+
+export type LogoutResult = {
+  loggedOut: true;
+  providers: LogoutProvider[];
+};
+
+export type LogoutProviderInput =
+  | OAuthProvider
+  | { provider: OAuthProvider; instanceKey?: string };

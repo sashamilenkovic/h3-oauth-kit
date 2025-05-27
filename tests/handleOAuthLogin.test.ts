@@ -161,3 +161,131 @@ describe('handleOAuthLogin', () => {
     );
   });
 });
+
+describe('handleOAuthLogin - preserveInstance behavior', () => {
+  beforeEach(() => {
+    vi.resetAllMocks();
+    vi.spyOn(utils, 'resolveState').mockReturnValue('mocked-state');
+    vi.spyOn(utils, 'buildAuthUrl').mockReturnValue(
+      'https://example.com/auth?client_id=abc',
+    );
+    registerOAuthProvider('clio', clioConfig);
+    registerOAuthProvider('clio', 'smithlaw', clioConfig);
+  });
+
+  it('generates normal provider key when preserveInstance is false (default)', async () => {
+    const event = createMockEvent();
+    const getProviderKeySpy = vi.spyOn(utils, 'getProviderKey');
+
+    await handleOAuthLogin(
+      'clio',
+      'smithlaw',
+      { redirect: false, preserveInstance: false },
+      event,
+    );
+
+    // Should call getProviderKey with preserveInstance: false
+    expect(getProviderKeySpy).toHaveBeenCalledWith('clio', 'smithlaw', false);
+  });
+
+  it('generates preserve provider key when preserveInstance is true', async () => {
+    const event = createMockEvent();
+    const getProviderKeySpy = vi.spyOn(utils, 'getProviderKey');
+
+    await handleOAuthLogin(
+      'clio',
+      'smithlaw',
+      { redirect: false, preserveInstance: true },
+      event,
+    );
+
+    // Should call getProviderKey with preserveInstance: true
+    expect(getProviderKeySpy).toHaveBeenCalledWith('clio', 'smithlaw', true);
+  });
+
+  it('generates preserve provider key for global provider when preserveInstance is true', async () => {
+    const event = createMockEvent();
+    const getProviderKeySpy = vi.spyOn(utils, 'getProviderKey');
+
+    await handleOAuthLogin(
+      'clio',
+      { redirect: false, preserveInstance: true },
+      event,
+    );
+
+    // Should call getProviderKey with preserveInstance: true and no instanceKey
+    expect(getProviderKeySpy).toHaveBeenCalledWith('clio', undefined, true);
+  });
+
+  it('passes preserve provider key to resolveState', async () => {
+    const event = createMockEvent();
+    const getProviderKeySpy = vi.spyOn(utils, 'getProviderKey');
+
+    await handleOAuthLogin(
+      'clio',
+      'smithlaw',
+      {
+        redirect: false,
+        preserveInstance: true,
+        state: { from: '/dashboard' },
+      },
+      event,
+    );
+
+    // Should call getProviderKey with preserveInstance: true
+    expect(getProviderKeySpy).toHaveBeenCalledWith('clio', 'smithlaw', true);
+
+    // Should pass the preserve provider key to resolveState
+    // We can't easily test the exact key without complex mocking, but we can verify the call was made
+    expect(utils.resolveState).toHaveBeenCalledWith(
+      event,
+      expect.stringContaining('clio'),
+      { from: '/dashboard' },
+    );
+  });
+
+  it('works with redirect: true and preserveInstance: true', async () => {
+    const event = createMockEvent();
+    const getProviderKeySpy = vi.spyOn(utils, 'getProviderKey');
+
+    await handleOAuthLogin(
+      'clio',
+      { redirect: true, preserveInstance: true },
+      event,
+    );
+
+    // Should call getProviderKey with preserveInstance: true
+    expect(getProviderKeySpy).toHaveBeenCalledWith('clio', undefined, true);
+
+    // Should redirect and pass preserve key to resolveState
+    expect(mockedSendRedirect).toHaveBeenCalledWith(
+      event,
+      'https://example.com/auth?client_id=abc',
+      302,
+    );
+    expect(utils.resolveState).toHaveBeenCalledWith(
+      event,
+      expect.stringContaining('clio'),
+      undefined,
+    );
+  });
+
+  it('defaults to preserveInstance: false when not specified', async () => {
+    const event = createMockEvent();
+    const getProviderKeySpy = vi.spyOn(utils, 'getProviderKey');
+
+    await handleOAuthLogin(
+      'clio',
+      'smithlaw',
+      { redirect: false }, // preserveInstance not specified
+      event,
+    );
+
+    // Should call getProviderKey with preserveInstance: undefined (falsy)
+    expect(getProviderKeySpy).toHaveBeenCalledWith(
+      'clio',
+      'smithlaw',
+      undefined,
+    );
+  });
+});

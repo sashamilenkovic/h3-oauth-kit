@@ -33,6 +33,11 @@ describe('getProviderCookieKeys', () => {
   it('handles string-based field correctly', () => {
     const fakeProvider = 'fake' as OAuthProvider;
     providerConfig[fakeProvider] = {
+      baseCookieFields: [
+        'access_token',
+        'refresh_token',
+        'access_token_expires_at',
+      ],
       providerSpecificFields: ['custom_field'],
     } as any;
 
@@ -48,6 +53,11 @@ describe('getProviderCookieKeys', () => {
   it('handles structured field objects with custom cookieName', () => {
     const fakeProvider = 'fake' as OAuthProvider;
     providerConfig[fakeProvider] = {
+      baseCookieFields: [
+        'access_token',
+        'refresh_token',
+        'access_token_expires_at',
+      ],
       providerSpecificFields: [
         {
           key: 'realm_id',
@@ -74,6 +84,11 @@ describe('getProviderCookieKeys', () => {
   it('handles structured field objects without custom cookieName (fallback to key)', () => {
     const fakeProvider = 'fake' as OAuthProvider;
     providerConfig[fakeProvider] = {
+      baseCookieFields: [
+        'access_token',
+        'refresh_token',
+        'access_token_expires_at',
+      ],
       providerSpecificFields: [
         {
           key: 'client_id',
@@ -100,6 +115,11 @@ describe('getProviderCookieKeys', () => {
   it('handles scoped provider with structured fields', () => {
     const fakeProvider = 'fake' as OAuthProvider;
     providerConfig[fakeProvider] = {
+      baseCookieFields: [
+        'access_token',
+        'refresh_token',
+        'access_token_expires_at',
+      ],
       providerSpecificFields: [
         'simple_field',
         {

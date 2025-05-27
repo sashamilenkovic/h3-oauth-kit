@@ -11,9 +11,13 @@ import type {
   OAuthParsedState,
   OAuthCallbackQuery,
   ScopedProvider,
-  TokenFor,
+  OAuthLoginOptions,
+  LogoutProviderInput,
+  LogoutResult,
+  LogoutProvider,
   ProviderId,
   GetProviderKey,
+  TokenFor,
 } from './types';
 
 import {
@@ -38,6 +42,8 @@ import {
   parseError,
   getProviderCookieKeys,
   getProviderKey,
+  parseProviderKey,
+  clearNonPreservedCookies,
 } from './utils';
 
 /**
@@ -177,6 +183,11 @@ export function hasOAuthProviderConfig<P extends OAuthProvider>(
  * const { url } = await handleOAuthLogin("clio", "smithlaw", {}, event);
  * ```
  *
+ * ### Multi-instance mode (preserves multiple instances)
+ * ```ts
+ * export default handleOAuthLogin("clio", "smithlaw", { redirect: true, preserveInstance: true });
+ * ```
+ *
  * The login flow constructs an OAuth authorization URL using the registered provider config
  * and optionally redirects the user or returns the URL for manual redirection.
  *
@@ -189,8 +200,9 @@ export function hasOAuthProviderConfig<P extends OAuthProvider>(
  *                      Use this to support multi-tenant or multi-app logins.
  *                      When omitted, the globally registered provider config is used.
  * @param options - Login options:
- *   - `redirect` (default: `false`) — Whether to automatically redirect to the provider’s login page.
+ *   - `redirect` (default: `false`) — Whether to automatically redirect to the provider's login page.
  *   - `state` — Optional state object or string to persist across login/callback.
+ *   - `preserveInstance` (default: `false`) — Whether to preserve this instance in scoped cookies.
  * @param event - *(Optional)* H3 event object. Required when calling the function imperatively inside a custom route handler.
  *
  * @returns
@@ -203,42 +215,54 @@ export function hasOAuthProviderConfig<P extends OAuthProvider>(
  */
 export function handleOAuthLogin<P extends OAuthProvider>(
   provider: P,
-  options: { redirect?: false; state?: OAuthStateValue },
+  options: {
+    redirect?: false;
+    state?: OAuthStateValue;
+    preserveInstance?: boolean;
+  },
   event: H3Event,
 ): Promise<{ url: string }>;
 
 export function handleOAuthLogin<P extends OAuthProvider>(
   provider: P,
-  options: { redirect: true; state?: OAuthStateValue },
+  options: {
+    redirect: true;
+    state?: OAuthStateValue;
+    preserveInstance?: boolean;
+  },
   event: H3Event,
 ): Promise<void>;
 
 export function handleOAuthLogin<P extends OAuthProvider>(
   provider: P,
   instanceKey?: string,
-  options?: { redirect?: false; state?: OAuthStateValue },
+  options?: OAuthLoginOptions,
   event?: H3Event,
 ): Promise<{ url: string }>;
 
 export function handleOAuthLogin<P extends OAuthProvider>(
   provider: P,
   instanceKey: string,
-  options: { redirect: true; state?: OAuthStateValue },
+  options: {
+    redirect: true;
+    state?: OAuthStateValue;
+    preserveInstance?: boolean;
+  },
   event: H3Event,
 ): Promise<void>;
 
 export function handleOAuthLogin<P extends OAuthProvider>(
   provider: P,
-  instanceKey?: string | { redirect?: boolean; state?: OAuthStateValue },
-  optionsOrEvent?: { redirect?: boolean; state?: OAuthStateValue } | H3Event,
+  instanceKey?: string | OAuthLoginOptions,
+  optionsOrEvent?: OAuthLoginOptions | H3Event,
   maybeEvent?: H3Event,
 ): EventHandler | Promise<{ url: string } | void> {
   const isScoped = typeof instanceKey === 'string';
   const resolvedInstanceKey = isScoped ? instanceKey : undefined;
 
   const options = isScoped
-    ? (optionsOrEvent as { redirect?: boolean; state?: OAuthStateValue })
-    : (instanceKey as { redirect?: boolean; state?: OAuthStateValue }) ?? {};
+    ? (optionsOrEvent as OAuthLoginOptions)
+    : (instanceKey as OAuthLoginOptions) ?? {};
 
   const event = isScoped ? maybeEvent : (optionsOrEvent as H3Event | undefined);
 
@@ -247,7 +271,11 @@ export function handleOAuthLogin<P extends OAuthProvider>(
       ? getOAuthProviderConfig(provider, resolvedInstanceKey)
       : getOAuthProviderConfig(provider);
 
-    const providerKey = getProviderKey(provider, resolvedInstanceKey);
+    const providerKey = getProviderKey(
+      provider,
+      resolvedInstanceKey,
+      options?.preserveInstance,
+    );
 
     const state = resolveState(evt, providerKey, options?.state);
 
@@ -385,18 +413,31 @@ export function handleOAuthCallback<P extends OAuthProvider>(
 
       verifyStateParam(evt, parsedState);
 
-      const config = parsedState.instanceKey
-        ? getOAuthProviderConfig(provider, parsedState.instanceKey)
+      // Parse the provider key to extract preserveInstance flag
+      const {
+        provider: _baseProvider,
+        instanceKey,
+        preserveInstance,
+      } = parseProviderKey(parsedState.providerKey);
+
+      const config = instanceKey
+        ? getOAuthProviderConfig(provider, instanceKey)
         : getOAuthProviderConfig(provider);
 
       const rawTokens = await exchangeCodeForTokens(code, config, provider);
 
+      // Clear non-preserved cookies if not in preserve mode
+      if (!preserveInstance) {
+        clearNonPreservedCookies(evt, provider);
+      }
+
+      // Set cookies with instance scoping (preserveInstance only affects clearing, not scoping)
       const tokens = setProviderCookies(
         evt,
         rawTokens,
         provider,
         options?.cookieOptions,
-        parsedState.instanceKey,
+        instanceKey,
       );
 
       const redirectTo = options?.redirectTo || '/';
@@ -447,6 +488,7 @@ export function handleOAuthCallback<P extends OAuthProvider>(
  * Defines an H3 route handler that requires valid OAuth tokens for one or more providers.
  *
  * This function performs the following steps for each specified provider:
+ * - Resolves the instance key (either from explicit definition or via `resolveInstance`)
  * - Verifies that access, refresh, and metadata cookies are present.
  * - Checks whether the access token is expired.
  * - If expired, attempts to refresh the token using the stored refresh token.
@@ -454,39 +496,71 @@ export function handleOAuthCallback<P extends OAuthProvider>(
  * - Injects the provider's access token into `event.context` under `${provider}_access_token`.
  * - Injects the full token object into `event.context.h3OAuthKit[provider]`.
  *
+ * ### Dynamic Instance Resolution
+ *
+ * When providers are defined as strings (e.g., `["clio"]`) and a `resolveInstance` function
+ * is provided in options, the function will be called to dynamically determine the instance
+ * key based on the request context:
+ *
+ * ```ts
+ * defineProtectedRoute(
+ *   ["clio"],
+ *   async (event) => { ... },
+ *   {
+ *     resolveInstance: async (event, provider) => {
+ *       // Extract tenant/instance from request headers, URL, etc.
+ *       return event.node.req.headers['x-tenant-id'];
+ *     }
+ *   }
+ * );
+ * ```
+ *
+ * When providers are defined as objects with explicit `instanceKey`, that takes precedence
+ * over `resolveInstance`.
+ *
  * If any provider's tokens are missing or invalid, the request is rejected with a `401 Unauthorized` error.
  *
  * @template Providers - A tuple of OAuth provider names (e.g., `["clio", "intuit"]`).
  *
  * @param providers - An array of providers to protect the route with.
  * @param handler - A function that handles the request if all tokens are valid. It receives a strongly typed `H3Event` with provider tokens injected into the context.
- * @param options - Optional configuration for token cookie behavior (e.g., `cookieOptions` to customize `sameSite`, `path`, etc.).
+ * @param options - Optional configuration including:
+ *   - `cookieOptions`: Customize cookie behavior (`sameSite`, `path`, etc.)
+ *   - `onAuthFailure`: Custom error handling for auth failures
+ *   - `resolveInstance`: Dynamic instance resolution function
  *
  * @returns A wrapped `defineEventHandler` that enforces token validation before invoking the handler.
  *
  */
 export function defineProtectedRoute<
   Defs extends (OAuthProvider | ScopedProvider)[],
+  InstanceKeys extends string = never,
 >(
   providers: Defs,
   handler: (
-    event: H3Event & { context: AugmentedContext<Defs> },
+    event: H3Event & { context: AugmentedContext<Defs, InstanceKeys> },
   ) => Promise<unknown>,
-  options?: ProtectedRouteOptions,
+  options?: ProtectedRouteOptions<InstanceKeys>,
 ): EventHandler {
   return defineEventHandler(async (event): Promise<unknown> => {
-    const ctx = event.context as AugmentedContext<Defs>;
+    const ctx = event.context as AugmentedContext<Defs, InstanceKeys>;
 
-    ctx.h3OAuthKit = {} as AugmentedContext<Defs>['h3OAuthKit'];
+    ctx.h3OAuthKit = {} as AugmentedContext<Defs, InstanceKeys>['h3OAuthKit'];
 
     for (const def of providers) {
       const isScoped = typeof def !== 'string';
       const provider = isScoped ? def.provider : def;
-      const instanceKey = isScoped ? def.instanceKey : undefined;
-
-      const providerKey = getProviderKey(provider, instanceKey);
 
       try {
+        // Resolve instanceKey: use explicit instanceKey if provided, otherwise call resolveInstance
+        let instanceKey: string | undefined;
+        if (isScoped) {
+          instanceKey = def.instanceKey;
+        } else if (options?.resolveInstance) {
+          instanceKey = await options.resolveInstance(event, provider);
+        }
+
+        const providerKey = getProviderKey(provider, instanceKey);
         const result = await oAuthTokensAreValid(event, provider, instanceKey);
 
         if (!result) {
@@ -559,8 +633,7 @@ export function defineProtectedRoute<
         type Def = typeof def;
         type Key = GetProviderKey<Def>;
         type Token = TokenFor<ProviderId<Def>>;
-
-        (ctx.h3OAuthKit as Record<Key, Token>)[providerKey as Key] =
+        (ctx.h3OAuthKit as unknown as Record<Key, Token>)[providerKey as Key] =
           tokens as Token;
       } catch (error) {
         if (options?.onAuthFailure) {
@@ -587,42 +660,58 @@ export function defineProtectedRoute<
       }
     }
 
-    return handler(event as H3Event & { context: AugmentedContext<Defs> });
+    return handler(
+      event as H3Event & { context: AugmentedContext<Defs, InstanceKeys> },
+    );
   });
 }
 
 /**
  * Deletes all cookies for a given OAuth provider, optionally scoped by instance.
  *
- * This function uses `getProviderCookieKeys` to delete all stored tokens and
- * provider-specific fields for the given provider and optional instanceKey.
+ * When `instanceKey` is provided, deletes only cookies for that specific instance.
+ * When `instanceKey` is undefined, deletes ALL cookies for registered instances of
+ * this provider by looking up the provider registry.
+ *
+ * If no providers are registered for the given provider key, no cookies are deleted.
+ * This ensures we only delete cookies for configurations that were actually registered.
  *
  * @param event - The H3 event to delete cookies from.
  * @param provider - The base OAuth provider key (e.g., `"clio"`).
- * @param instanceKey - Optional instance key (e.g., `"smithlaw"`).
+ * @param instanceKey - Optional instance key (e.g., `"smithlaw"`). If undefined, deletes all provider cookies.
  */
 export function deleteProviderCookies(
   event: H3Event,
   provider: OAuthProvider,
   instanceKey?: string,
 ): void {
-  for (const cookieName of getProviderCookieKeys(provider, instanceKey)) {
-    deleteCookie(event, cookieName);
+  if (instanceKey) {
+    // Specific instance: delete only those cookies
+    for (const cookieName of getProviderCookieKeys(provider, instanceKey)) {
+      deleteCookie(event, cookieName);
+    }
+  } else {
+    // Wildcard: find all registered instances for this provider
+    const registeredKeys = Array.from(providerRegistry.keys());
+    const providerKeys = registeredKeys.filter(
+      (key) => key === provider || key.startsWith(`${provider}:`),
+    );
+
+    // Registry-based deletion: delete cookies for each registered provider key
+    for (const providerKey of providerKeys) {
+      const extractedInstanceKey = providerKey.includes(':')
+        ? providerKey.split(':')[1]
+        : undefined;
+
+      for (const cookieName of getProviderCookieKeys(
+        provider,
+        extractedInstanceKey,
+      )) {
+        deleteCookie(event, cookieName);
+      }
+    }
   }
 }
-
-type LogoutProvider = {
-  provider: OAuthProvider;
-  instanceKey?: string;
-};
-
-type LogoutResult = {
-  loggedOut: true;
-  providers: LogoutProvider[];
-};
-export type LogoutProviderInput =
-  | OAuthProvider
-  | { provider: OAuthProvider; instanceKey?: string };
 
 export function handleOAuthLogout(
   providers: LogoutProviderInput[],

@@ -28,6 +28,7 @@ vi.mock('../src/utils', async () => {
   return {
     ...actual,
     setProviderCookies: vi.fn(),
+    clearNonPreservedCookies: vi.fn(),
   };
 });
 
@@ -36,9 +37,12 @@ const mockSendRedirect = sendRedirect as ReturnType<typeof vi.fn>;
 const mockOfetch = ofetch as unknown as ReturnType<typeof vi.fn>;
 const mockGetCookie = vi.mocked(getCookie);
 
-// Import the mocked setProviderCookies
-const { setProviderCookies } = await import('../src/utils');
+// Import the mocked functions
+const { setProviderCookies, clearNonPreservedCookies } = await import(
+  '../src/utils'
+);
 const mockSetProviderCookies = vi.mocked(setProviderCookies);
+const mockClearNonPreservedCookies = vi.mocked(clearNonPreservedCookies);
 
 function mockOAuthStateCookie(providerKey: string, csrfValue: string) {
   mockGetCookie.mockImplementation((_, key) =>
@@ -669,16 +673,16 @@ describe('handleOAuthCallback - scoped provider integration', () => {
     expect(result.state.providerKey).toBe('azure');
   });
 
-  it('fails gracefully when state is missing instanceKey but providerKey suggests scoped provider', async () => {
+  it('correctly extracts instanceKey from providerKey even when state is missing instanceKey field', async () => {
     const csrf = 'csrf-malformed-state';
     const event = createMockEvent();
 
-    // Create malformed state that has scoped providerKey but missing instanceKey
-    // This simulates the bug scenario before the fix
+    // Create state that has scoped providerKey but missing instanceKey field
+    // The instanceKey should be extracted from the providerKey itself
     const encodedState = encodeState({
       csrf,
       providerKey: 'azure:smithlaw',
-      // instanceKey is missing - this would cause the bug
+      // instanceKey is missing from state - but should be extracted from providerKey
     });
 
     mockGetQuery.mockReturnValue({
@@ -703,18 +707,135 @@ describe('handleOAuthCallback - scoped provider integration', () => {
       event,
     );
 
-    // Even with malformed state, setProviderCookies should be called with undefined instanceKey
-    // The system should handle this gracefully rather than creating malformed cookie names
+    // setProviderCookies should be called with instanceKey extracted from providerKey
+    // The instanceKey in state is redundant - providerKey is the authoritative source
     expect(mockSetProviderCookies).toHaveBeenCalledWith(
       event,
       mockTokens,
       'azure',
       undefined,
-      undefined, // instanceKey should be undefined when missing from state
+      'smithlaw', // instanceKey should be extracted from providerKey 'azure:smithlaw'
     );
 
     expect(result.tokens).toEqual(mockTokens);
-    expect(result.state.instanceKey).toBeUndefined();
+    expect(result.state.instanceKey).toBeUndefined(); // state doesn't have instanceKey
     expect(result.state.providerKey).toBe('azure:smithlaw');
+  });
+});
+
+describe('handleOAuthCallback - preserveInstance behavior', () => {
+  const config = {
+    clientId: 'test-client-id',
+    clientSecret: 'test-secret',
+    tokenEndpoint: 'https://example.com/token',
+    authorizeEndpoint: 'https://example.com/auth',
+    redirectUri: 'https://myapp.com/callback',
+    scopes: ['read', 'write'],
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    registerOAuthProvider('clio', config);
+    registerOAuthProvider('clio', 'smithlaw', config); // Register scoped provider
+
+    // Reset mocked functions to default behavior
+    mockSetProviderCookies.mockImplementation((_, tokens) => tokens);
+    mockClearNonPreservedCookies.mockImplementation(() => {});
+  });
+
+  it('clears non-preserved cookies when preserveInstance is false (default behavior)', async () => {
+    const csrf = 'csrf-no-preserve';
+    const event = createMockEvent();
+
+    // Create state with normal providerKey (no :preserve suffix)
+    const encodedState = encodeState({
+      csrf,
+      providerKey: 'clio:smithlaw', // Normal scoped provider key
+    });
+
+    mockGetQuery.mockReturnValue({
+      code: 'auth-code-no-preserve',
+      state: encodedState,
+    });
+
+    const mockTokens = {
+      access_token: 'no-preserve-access-token',
+      refresh_token: 'no-preserve-refresh-token',
+      expires_in: 3600,
+      token_type: 'bearer',
+      client_id: 'client-xyz',
+    };
+
+    mockOfetch.mockResolvedValue(mockTokens);
+    mockOAuthStateCookie('clio:smithlaw', csrf);
+
+    await handleOAuthCallback('clio', { redirect: false }, event);
+
+    // Should clear non-preserved cookies since preserveInstance is false
+    expect(mockClearNonPreservedCookies).toHaveBeenCalledWith(event, 'clio');
+  });
+
+  it('preserves existing cookies when preserveInstance is true', async () => {
+    const csrf = 'csrf-preserve';
+    const event = createMockEvent();
+
+    // Create state with :preserve suffix in providerKey
+    const encodedState = encodeState({
+      csrf,
+      providerKey: 'clio:smithlaw:preserve', // Provider key with preserve flag
+    });
+
+    mockGetQuery.mockReturnValue({
+      code: 'auth-code-preserve',
+      state: encodedState,
+    });
+
+    const mockTokens = {
+      access_token: 'preserve-access-token',
+      refresh_token: 'preserve-refresh-token',
+      expires_in: 3600,
+      token_type: 'bearer',
+      client_id: 'client-xyz',
+    };
+
+    mockOfetch.mockResolvedValue(mockTokens);
+    mockOAuthStateCookie('clio:smithlaw:preserve', csrf);
+
+    await handleOAuthCallback('clio', { redirect: false }, event);
+
+    // Should NOT clear non-preserved cookies since preserveInstance is true
+    expect(mockClearNonPreservedCookies).not.toHaveBeenCalled();
+  });
+
+  it('preserves existing cookies for global provider with preserve flag', async () => {
+    const csrf = 'csrf-global-preserve';
+    const event = createMockEvent();
+
+    // Create state with :preserve suffix for global provider
+    const encodedState = encodeState({
+      csrf,
+      providerKey: 'clio:preserve', // Global provider with preserve flag
+    });
+
+    mockGetQuery.mockReturnValue({
+      code: 'auth-code-global-preserve',
+      state: encodedState,
+    });
+
+    const mockTokens = {
+      access_token: 'global-preserve-access-token',
+      refresh_token: 'global-preserve-refresh-token',
+      expires_in: 3600,
+      token_type: 'bearer',
+      client_id: 'client-xyz',
+    };
+
+    mockOfetch.mockResolvedValue(mockTokens);
+    mockOAuthStateCookie('clio:preserve', csrf);
+
+    await handleOAuthCallback('clio', { redirect: false }, event);
+
+    // Should NOT clear non-preserved cookies since preserveInstance is true
+    expect(mockClearNonPreservedCookies).not.toHaveBeenCalled();
   });
 });
