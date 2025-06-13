@@ -34,14 +34,14 @@ export function createMockEvent(options?: {
 /**
  * Test helper: Encrypts the provider's refresh token while preserving type structure.
  */
-export function withEncryptedRefreshToken<
+export async function withEncryptedRefreshToken<
   P extends string,
   T extends Record<string, any>, // ⬅️ changed from string to any
->(provider: P, tokens: T): T {
+>(provider: P, tokens: T): Promise<T> {
   const key = `${provider}_refresh_token` as keyof T;
   return {
     ...tokens,
-    [key]: encrypt(tokens[key] as string),
+    [key]: await encrypt(tokens[key] as string),
   };
 }
 

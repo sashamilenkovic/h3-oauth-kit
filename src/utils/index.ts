@@ -42,13 +42,13 @@ import { encrypt, decrypt } from './encryption';
  * @returns The original token object, unchanged.
  */
 
-export function setProviderCookies<P extends OAuthProvider>(
+export async function setProviderCookies<P extends OAuthProvider>(
   event: H3Event,
   tokens: OAuthProviderTokenMap[P],
   provider: P,
   options?: CookieOptionsOverride,
   instanceKey?: string,
-): OAuthProviderTokenMap[P] {
+): Promise<OAuthProviderTokenMap[P]> {
   const providerKey = instanceKey ? `${provider}:${instanceKey}` : provider;
 
   const base: Parameters<typeof setCookie>[3] = {
@@ -77,7 +77,7 @@ export function setProviderCookies<P extends OAuthProvider>(
   );
 
   if (tokens.refresh_token) {
-    const encryptedRefreshToken = encrypt(tokens.refresh_token);
+    const encryptedRefreshToken = await encrypt(tokens.refresh_token);
 
     setCookie(event, `${providerKey}_refresh_token`, encryptedRefreshToken, {
       ...base,
@@ -650,7 +650,7 @@ export async function oAuthTokensAreValid<P extends OAuthProvider>(
 
   if (!access_token || !refresh_token || !access_token_expires_at) return false;
 
-  const encryptedRefreshToken = decrypt(refresh_token);
+  const encryptedRefreshToken = await decrypt(refresh_token);
 
   const expires_in = parseInt(access_token_expires_at, 10);
 

@@ -65,7 +65,7 @@ describe('handleOAuthCallback', () => {
     registerOAuthProvider('clio', config);
 
     // Set up default behavior for setProviderCookies mock
-    mockSetProviderCookies.mockImplementation((_, tokens) => tokens);
+    mockSetProviderCookies.mockImplementation(async (_, tokens) => tokens);
   });
 
   it('returns tokens, state, and providerMetadata when redirect is false', async () => {
@@ -445,7 +445,7 @@ describe('handleOAuthCallback as route handler', () => {
     registerOAuthProvider('clio', config);
 
     // Reset setProviderCookies mock to default behavior
-    mockSetProviderCookies.mockImplementation((_, tokens) => tokens);
+    mockSetProviderCookies.mockImplementation(async (_, tokens) => tokens);
   });
 
   it('functions as a route handler and performs redirect (event initially undefined)', async () => {
@@ -574,7 +574,7 @@ describe('handleOAuthCallback - scoped provider integration', () => {
     registerOAuthProvider('azure', 'smithlaw', config);
 
     // Reset setProviderCookies mock to default behavior
-    mockSetProviderCookies.mockImplementation((_, tokens) => tokens);
+    mockSetProviderCookies.mockImplementation(async (_, tokens) => tokens);
   });
 
   it('correctly handles scoped provider state and sets cookies with proper instanceKey', async () => {
@@ -739,7 +739,7 @@ describe('handleOAuthCallback - preserveInstance behavior', () => {
     registerOAuthProvider('clio', 'smithlaw', config); // Register scoped provider
 
     // Reset mocked functions to default behavior
-    mockSetProviderCookies.mockImplementation((_, tokens) => tokens);
+    mockSetProviderCookies.mockImplementation(async (_, tokens) => tokens);
     mockClearNonPreservedCookies.mockImplementation(() => {});
   });
 

@@ -3,13 +3,8 @@ import type {
   AzureAuthTokens,
   AzureRefreshTokenResponse,
   TokenValidationResult,
-  OAuthProvider,
 } from '../src/types';
-import {
-  defineProtectedRoute,
-  registerOAuthProvider,
-  withInstanceKeys,
-} from '../src';
+import { defineProtectedRoute, registerOAuthProvider } from '../src';
 import { createMockEvent } from './utils';
 import {
   oAuthTokensAreValid,
@@ -188,7 +183,7 @@ describe('defineProtectedRoute (multi-provider)', () => {
 
     mockRefreshToken.mockResolvedValue(refreshed); // ✅ returns RefreshTokenResponse
     mockNormalizeRefreshedToken.mockReturnValue(fullToken); // ✅ returns full token w/ scope + id_token
-    mockSetProviderCookies.mockReturnValue(fullToken);
+    mockSetProviderCookies.mockResolvedValue(fullToken);
 
     const handler = defineProtectedRoute(
       [{ provider: 'azure', instanceKey: 'dev' }],
@@ -324,7 +319,7 @@ describe('defineProtectedRoute (multi-provider)', () => {
 
     mockRefreshToken.mockResolvedValue(refreshed);
     mockNormalizeRefreshedToken.mockReturnValue(fullToken);
-    mockSetProviderCookies.mockReturnValue(fullToken);
+    mockSetProviderCookies.mockResolvedValue(fullToken);
 
     const handler = defineProtectedRoute(
       [{ provider: 'azure', instanceKey: 'dev' }],
@@ -382,7 +377,7 @@ describe('defineProtectedRoute (multi-provider)', () => {
 
     mockRefreshToken.mockResolvedValue(refreshed);
     mockNormalizeRefreshedToken.mockReturnValue(fullToken);
-    mockSetProviderCookies.mockReturnValue(fullToken);
+    mockSetProviderCookies.mockResolvedValue(fullToken);
 
     const handler = defineProtectedRoute(
       ['clio'], // Non-scoped provider (no instanceKey)
@@ -628,7 +623,7 @@ describe('defineProtectedRoute (multi-provider)', () => {
 
     mockRefreshToken.mockResolvedValue(refreshed);
     mockNormalizeRefreshedToken.mockReturnValue(fullToken);
-    mockSetProviderCookies.mockReturnValue(fullToken);
+    mockSetProviderCookies.mockResolvedValue(fullToken);
 
     // Create handler WITHOUT options parameter (options will be undefined)
     const handler = defineProtectedRoute(['clio'], async (evt) => ({
@@ -676,7 +671,7 @@ describe('defineProtectedRoute (multi-provider)', () => {
 
     mockRefreshToken.mockResolvedValue(refreshed);
     mockNormalizeRefreshedToken.mockReturnValue(fullToken);
-    mockSetProviderCookies.mockReturnValue(fullToken);
+    mockSetProviderCookies.mockResolvedValue(fullToken);
 
     const customCookieOptions = {
       sameSite: 'lax' as const,

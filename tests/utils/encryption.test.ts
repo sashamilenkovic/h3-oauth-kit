@@ -2,22 +2,22 @@ import { describe, it, expect, vi, afterEach } from 'vitest';
 import { encrypt, decrypt } from '../../src/utils/encryption';
 
 describe('Encryption utils', () => {
-  it('encrypts and decrypts a string correctly', () => {
+  it('encrypts and decrypts a string correctly', async () => {
     const originalText = 'super-secret-token';
-    const encrypted = encrypt(originalText);
-    const decrypted = decrypt(encrypted);
+    const encrypted = await encrypt(originalText);
+    const decrypted = await decrypt(encrypted);
 
     expect(typeof encrypted).toBe('string');
     expect(encrypted).not.toBe(originalText); // Should be encrypted
     expect(decrypted).toBe(originalText); // Should match original
   });
 
-  it('throws an error when decrypting malformed input', () => {
-    expect(() => decrypt('not:valid:format')).toThrow();
+  it('throws an error when decrypting malformed input', async () => {
+    await expect(decrypt('not:valid:format')).rejects.toThrow();
   });
 
-  it('throws if IV or ciphertext is invalid hex', () => {
-    expect(() => decrypt('zzzz:nothex')).toThrow();
+  it('throws if IV or ciphertext is invalid hex', async () => {
+    await expect(decrypt('zzzz:nothex')).rejects.toThrow();
   });
 });
 

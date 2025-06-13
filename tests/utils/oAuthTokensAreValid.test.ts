@@ -24,7 +24,7 @@ const now = Math.floor(Date.now() / 1000);
 const testCases = [
   {
     provider: 'azure' as const,
-    cookies: withEncryptedRefreshToken('azure', {
+    cookies: await withEncryptedRefreshToken('azure', {
       azure_access_token: 'abc',
       azure_refresh_token: 'refresh',
       azure_access_token_expires_at: String(now + 60),
@@ -37,7 +37,7 @@ const testCases = [
   },
   {
     provider: 'clio' as const,
-    cookies: withEncryptedRefreshToken('clio', {
+    cookies: await withEncryptedRefreshToken('clio', {
       clio_access_token: 'abc',
       clio_refresh_token: 'refresh',
       clio_access_token_expires_at: String(now + 60),
@@ -46,7 +46,7 @@ const testCases = [
   },
   {
     provider: 'intuit' as const,
-    cookies: withEncryptedRefreshToken('intuit', {
+    cookies: await withEncryptedRefreshToken('intuit', {
       intuit_access_token: 'abc',
       intuit_refresh_token: 'refresh',
       intuit_access_token_expires_at: String(now + 60),
@@ -99,7 +99,7 @@ describe('oAuthTokensAreValid', () => {
 
   it('returns expired status if access token is expired', async () => {
     const expiredNow = String(now - 60);
-    const cookies = withEncryptedRefreshToken('clio', {
+    const cookies = await withEncryptedRefreshToken('clio', {
       clio_access_token: 'abc',
       clio_refresh_token: 'refresh',
       clio_access_token_expires_at: expiredNow,
@@ -122,7 +122,7 @@ describe('oAuthTokensAreValid', () => {
   it('returns false if token_type does not match expected', async () => {
     const event = createMockEvent();
     setCookie(event, 'clio_access_token', 'a');
-    setCookie(event, 'clio_refresh_token', encrypt('r')); // ✅ encrypt here
+    setCookie(event, 'clio_refresh_token', await encrypt('r')); // ✅ encrypt here
     setCookie(
       event,
       'clio_access_token_expires_at',
@@ -137,7 +137,7 @@ describe('oAuthTokensAreValid', () => {
 
   it('returns expired status if expiry is in the past', async () => {
     const expiredNow = `${Math.floor(Date.now() / 1000) - 100}`;
-    const cookies = withEncryptedRefreshToken('clio', {
+    const cookies = await withEncryptedRefreshToken('clio', {
       clio_access_token: 'a',
       clio_refresh_token: 'r',
       clio_access_token_expires_at: expiredNow,
@@ -166,7 +166,7 @@ describe('oAuthTokensAreValid', () => {
     const originalFields = providerConfig[provider].providerSpecificFields;
     providerConfig[provider].providerSpecificFields = [123 as any]; // malformed
 
-    const cookies = withEncryptedRefreshToken(provider, {
+    const cookies = await withEncryptedRefreshToken(provider, {
       clio_access_token: 'abc',
       clio_refresh_token: 'refresh',
       clio_access_token_expires_at: String(now + 60),
@@ -193,7 +193,7 @@ describe('oAuthTokensAreValid', () => {
     const originalFields = providerConfig[provider].providerSpecificFields;
     providerConfig[provider].providerSpecificFields = ['token_type'];
 
-    const cookies = withEncryptedRefreshToken(provider, {
+    const cookies = await withEncryptedRefreshToken(provider, {
       clio_access_token: 'abc',
       clio_refresh_token: 'refresh',
       clio_access_token_expires_at: String(now + 60),
@@ -223,7 +223,7 @@ describe('oAuthTokensAreValid', () => {
       providerConfig[provider].validateRefreshTokenExpiry ?? false;
     providerConfig[provider].validateRefreshTokenExpiry = true;
 
-    const cookies = withEncryptedRefreshToken(provider, {
+    const cookies = await withEncryptedRefreshToken(provider, {
       intuit_access_token: 'abc',
       intuit_refresh_token: 'refresh',
       intuit_access_token_expires_at: String(now + 60),
@@ -257,7 +257,7 @@ describe('oAuthTokensAreValid', () => {
     providerConfig[provider].validateRefreshTokenExpiry = true;
 
     // Create cookies WITHOUT the refresh_token_expires_at cookie
-    const cookies = withEncryptedRefreshToken(provider, {
+    const cookies = await withEncryptedRefreshToken(provider, {
       intuit_access_token: 'abc',
       intuit_refresh_token: 'refresh',
       intuit_access_token_expires_at: String(now + 60),
@@ -286,7 +286,7 @@ describe('oAuthTokensAreValid', () => {
     providerConfig[provider].providerSpecificFields = ['ext_expires_in'];
 
     // Create cookies with core fields but WITHOUT the required provider-specific field
-    const cookies = withEncryptedRefreshToken(provider, {
+    const cookies = await withEncryptedRefreshToken(provider, {
       azure_access_token: 'abc',
       azure_refresh_token: 'refresh',
       azure_access_token_expires_at: String(now + 60),
@@ -314,7 +314,7 @@ describe('oAuthTokensAreValid', () => {
       const instanceKey = 'smithlaw';
 
       // Create cookies with scoped provider key format: "clio:smithlaw_*"
-      const scopedCookies = withEncryptedRefreshToken(
+      const scopedCookies = await withEncryptedRefreshToken(
         `${provider}:${instanceKey}` as any,
         {
           [`${provider}:${instanceKey}_access_token`]: 'scoped-access-token',
@@ -350,7 +350,7 @@ describe('oAuthTokensAreValid', () => {
       const instanceKey = 'smithlaw';
 
       // Create cookies for global provider (without instanceKey)
-      const globalCookies = withEncryptedRefreshToken(provider, {
+      const globalCookies = await withEncryptedRefreshToken(provider, {
         clio_access_token: 'global-access-token',
         clio_refresh_token: 'global-refresh-token',
         clio_access_token_expires_at: String(now + 60),
@@ -373,7 +373,7 @@ describe('oAuthTokensAreValid', () => {
       const instanceKey = 'dev';
       const expiredTime = String(now - 60);
 
-      const scopedCookies = withEncryptedRefreshToken(
+      const scopedCookies = await withEncryptedRefreshToken(
         `${provider}:${instanceKey}` as any,
         {
           [`${provider}:${instanceKey}_access_token`]: 'expired-scoped-token',
@@ -408,7 +408,7 @@ describe('oAuthTokensAreValid', () => {
         providerConfig[provider].validateRefreshTokenExpiry ?? false;
       providerConfig[provider].validateRefreshTokenExpiry = true;
 
-      const scopedCookies = withEncryptedRefreshToken(
+      const scopedCookies = await withEncryptedRefreshToken(
         `${provider}:${instanceKey}` as any,
         {
           [`${provider}:${instanceKey}_access_token`]: 'scoped-intuit-token',
@@ -453,7 +453,7 @@ describe('oAuthTokensAreValid', () => {
       providerConfig[provider].validateRefreshTokenExpiry = true;
 
       // Create scoped cookies WITHOUT refresh_token_expires_at
-      const scopedCookies = withEncryptedRefreshToken(
+      const scopedCookies = await withEncryptedRefreshToken(
         `${provider}:${instanceKey}` as any,
         {
           [`${provider}:${instanceKey}_access_token`]: 'scoped-intuit-token',
@@ -483,7 +483,7 @@ describe('oAuthTokensAreValid', () => {
       const provider = 'clio' as const;
 
       // Create cookies for "smithlaw" instance
-      const smithlawCookies = withEncryptedRefreshToken(
+      const smithlawCookies = await withEncryptedRefreshToken(
         `${provider}:smithlaw` as any,
         {
           [`${provider}:smithlaw_access_token`]: 'smithlaw-token',
@@ -494,7 +494,7 @@ describe('oAuthTokensAreValid', () => {
       );
 
       // Create cookies for "joneslaw" instance
-      const joneslawCookies = withEncryptedRefreshToken(
+      const joneslawCookies = await withEncryptedRefreshToken(
         `${provider}:joneslaw` as any,
         {
           [`${provider}:joneslaw_access_token`]: 'joneslaw-token',

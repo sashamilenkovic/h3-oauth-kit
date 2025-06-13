@@ -433,7 +433,7 @@ export function handleOAuthCallback<P extends OAuthProvider>(
       }
 
       // Set cookies with instance scoping (preserveInstance only affects clearing, not scoping)
-      const tokens = setProviderCookies(
+      const tokens = await setProviderCookies(
         evt,
         rawTokens,
         provider,
@@ -636,7 +636,7 @@ export function defineProtectedRoute<
             tokens,
           );
 
-          tokens = setProviderCookies(
+          tokens = await setProviderCookies(
             event,
             fullToken,
             provider,

@@ -68,10 +68,10 @@ describe('setProviderCookies', () => {
 
   it.each(cases)(
     'writes cookies for $provider (scoped=$instanceKey) and returns full token',
-    ({ provider, tokens, expectedCookies, instanceKey }) => {
+    async ({ provider, tokens, expectedCookies, instanceKey }) => {
       const event = createMockEvent();
 
-      const result = setProviderCookies(
+      const result = await setProviderCookies(
         event,
         tokens as any,
         provider as OAuthProvider,
@@ -92,7 +92,7 @@ describe('setProviderCookies', () => {
           expect(cookie?.value).toBe(stripped);
         } else if (expectedName.endsWith('_refresh_token')) {
           expect(typeof cookie?.value).toBe('string');
-          expect(decrypt(cookie!.value)).toBe(expectedValue);
+          expect(await decrypt(cookie!.value)).toBe(expectedValue);
         } else {
           expect(cookie?.value).toEqual(expectedValue);
         }
@@ -109,7 +109,7 @@ describe('setProviderCookies', () => {
     },
   );
 
-  it('respects custom cookieOptions', () => {
+  it('respects custom cookieOptions', async () => {
     const event = createMockEvent();
     const tokens = {
       access_token: 'Bearer custom123',
@@ -119,7 +119,7 @@ describe('setProviderCookies', () => {
       client_id: 'abc',
     };
 
-    setProviderCookies(
+    await setProviderCookies(
       event,
       tokens,
       'clio',
@@ -139,7 +139,7 @@ describe('setProviderCookies', () => {
     }
   });
 
-  it("stores raw access_token if it lacks 'Bearer' prefix", () => {
+  it("stores raw access_token if it lacks 'Bearer' prefix", async () => {
     const event = createMockEvent();
     const tokens = {
       access_token: 'abc123',
@@ -149,7 +149,7 @@ describe('setProviderCookies', () => {
       client_id: 'client-xyz',
     };
 
-    setProviderCookies(event, tokens, 'clio');
+    await setProviderCookies(event, tokens, 'clio');
 
     const accessCookie = (setCookie as unknown as Mock).mock.calls.find(
       ([, name]) => name === 'clio_access_token',
@@ -158,7 +158,7 @@ describe('setProviderCookies', () => {
     expect(accessCookie?.[2]).toBe('abc123');
   });
 
-  it('applies custom field setter', () => {
+  it('applies custom field setter', async () => {
     const event = createMockEvent();
 
     providerConfig.clio.providerSpecificFields = [
@@ -177,7 +177,7 @@ describe('setProviderCookies', () => {
       client_id: '789',
     };
 
-    setProviderCookies(event, tokens, 'clio');
+    await setProviderCookies(event, tokens, 'clio');
 
     const customCookie = (setCookie as unknown as Mock).mock.calls.find(
       ([, name]) => name === 'clio_custom_id',
@@ -186,7 +186,7 @@ describe('setProviderCookies', () => {
     expect(customCookie?.[2]).toBe('x_789');
   });
 
-  it('writes cookies using scoped key format', () => {
+  it('writes cookies using scoped key format', async () => {
     const event = createMockEvent();
     const tokens = {
       access_token: 'Bearer scoped123',
@@ -196,7 +196,7 @@ describe('setProviderCookies', () => {
       client_id: 'abc',
     };
 
-    setProviderCookies(event, tokens, 'clio', undefined, 'smithlaw');
+    await setProviderCookies(event, tokens, 'clio', undefined, 'smithlaw');
 
     const access = (setCookie as unknown as Mock).mock.calls.find(
       ([, name]) => name === 'clio:smithlaw_access_token',
@@ -206,11 +206,22 @@ describe('setProviderCookies', () => {
     );
 
     expect(access?.[2]).toBe('scoped123');
-    expect(decrypt(refresh?.[2]!)).toBe('scopedRefresh');
+    expect(await decrypt(refresh?.[2]!)).toBe('scopedRefresh');
   });
 
-  it('applies Intuit x_refresh_token_expires_in setter to create absolute timestamp', () => {
+  it('applies Intuit x_refresh_token_expires_in setter to create absolute timestamp', async () => {
     const event = createMockEvent();
+
+    // Save and override provider config for this test
+    const originalFields = [...providerConfig.intuit.providerSpecificFields];
+    providerConfig.intuit.providerSpecificFields = [
+      {
+        key: 'x_refresh_token_expires_in',
+        cookieName: 'intuit_refresh_token_expires_at',
+        setter: (val) => String(Math.floor(Date.now() / 1000) + Number(val)),
+      },
+      // ...other fields as needed
+    ];
 
     // Mock Date.now() to return a fixed timestamp for predictable testing
     const mockNow = 1640995200000; // 2022-01-01 00:00:00 UTC
@@ -226,7 +237,7 @@ describe('setProviderCookies', () => {
       x_refresh_token_expires_in: 8640000, // 100 days in seconds
     };
 
-    setProviderCookies(event, tokens, 'intuit');
+    await setProviderCookies(event, tokens, 'intuit');
 
     // Find the cookie that should be set by the x_refresh_token_expires_in setter
     const refreshExpiresCookie = (setCookie as unknown as Mock).mock.calls.find(
@@ -238,11 +249,12 @@ describe('setProviderCookies', () => {
 
     expect(refreshExpiresCookie?.[2]).toBe(expectedTimestamp);
 
-    // Restore original Date.now
+    // Restore original Date.now and provider config
     Date.now = originalDateNow;
+    providerConfig.intuit.providerSpecificFields = originalFields;
   });
 
-  it('skips setting cookies when token field value is undefined', () => {
+  it('skips setting cookies when token field value is undefined', async () => {
     const event = createMockEvent();
 
     // Configure provider to expect a field that will be undefined
@@ -259,7 +271,7 @@ describe('setProviderCookies', () => {
       // client_id is intentionally omitted (undefined)
     } as any; // Use 'as any' to allow undefined client_id for testing
 
-    setProviderCookies(event, tokens, 'clio');
+    await setProviderCookies(event, tokens, 'clio');
 
     const cookieCalls = (setCookie as unknown as Mock).mock.calls;
 
@@ -277,7 +289,7 @@ describe('setProviderCookies', () => {
     expect(clientIdCookie).toBeUndefined();
   });
 
-  it('handles structured fields with and without cookieName (testing resolveProviderFieldMeta)', () => {
+  it('handles structured fields with and without cookieName (testing resolveProviderFieldMeta)', async () => {
     const event = createMockEvent();
 
     // Configure provider with mixed structured fields - some with cookieName, some without
@@ -307,7 +319,7 @@ describe('setProviderCookies', () => {
       expires_duration: '7200',
     };
 
-    setProviderCookies(event, tokens, 'clio');
+    await setProviderCookies(event, tokens, 'clio');
 
     const cookieCalls = (setCookie as unknown as Mock).mock.calls;
 
@@ -333,7 +345,7 @@ describe('setProviderCookies', () => {
     expect(customExpiresCookie?.[2]).toBe('transformed_7200');
   });
 
-  it('never creates malformed cookie names when instanceKey is undefined', () => {
+  it('never creates malformed cookie names when instanceKey is undefined', async () => {
     const event = createMockEvent();
     const tokens = {
       access_token: 'Bearer test-token',
@@ -346,7 +358,7 @@ describe('setProviderCookies', () => {
     };
 
     // This should create cookies with "azure_" prefix, not "azure:azure_"
-    setProviderCookies(event, tokens, 'azure', undefined, undefined);
+    await setProviderCookies(event, tokens, 'azure', undefined, undefined);
 
     const cookieCalls = (setCookie as unknown as Mock).mock.calls;
     const cookieNames = cookieCalls.map(([, name]) => name);
@@ -362,7 +374,7 @@ describe('setProviderCookies', () => {
     expect(cookieNames).toContain('azure_access_token_expires_at');
   });
 
-  it('creates properly scoped cookie names when instanceKey is provided', () => {
+  it('creates properly scoped cookie names when instanceKey is provided', async () => {
     const event = createMockEvent();
     const tokens = {
       access_token: 'Bearer scoped-token',
@@ -374,7 +386,7 @@ describe('setProviderCookies', () => {
       id_token: 'scoped-id-token',
     };
 
-    setProviderCookies(event, tokens, 'azure', undefined, 'smithlaw');
+    await setProviderCookies(event, tokens, 'azure', undefined, 'smithlaw');
 
     const cookieCalls = (setCookie as unknown as Mock).mock.calls;
     const cookieNames = cookieCalls.map(([, name]) => name);
