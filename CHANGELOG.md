@@ -1,3 +1,10 @@
+# [0.8.0](https://github.com/sashamilenkovic/h3-oauth-kit/compare/v0.7.0...v0.8.0) (2025-06-13)
+
+
+### Features
+
+* swaps out node crypto approach for web api supported one ([a0dc401](https://github.com/sashamilenkovic/h3-oauth-kit/commit/a0dc401a9ac99e3613f964ce71f98a5f15edbed0))
+
 # [0.7.0](https://github.com/sashamilenkovic/h3-oauth-kit/compare/v0.6.0...v0.7.0) (2025-05-27)
 
 
