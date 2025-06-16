@@ -1,3 +1,10 @@
+# [0.9.0](https://github.com/sashamilenkovic/h3-oauth-kit/compare/v0.8.0...v0.9.0) (2025-06-16)
+
+
+### Features
+
+* wraps registerOAuthProvider in composable to set encryption key, as opposed to referencing it within module scope directly ([3842107](https://github.com/sashamilenkovic/h3-oauth-kit/commit/384210714f673e3567d6a0f7a8c6794fea45462f))
+
 # [0.8.0](https://github.com/sashamilenkovic/h3-oauth-kit/compare/v0.7.0...v0.8.0) (2025-06-13)
 
 
