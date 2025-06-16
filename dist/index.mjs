@@ -1,6 +1,5 @@
 import { getCookie, createError, setCookie, deleteCookie, getQuery, defineEventHandler, isError, sendRedirect } from 'h3';
 import { ofetch } from 'ofetch';
-import crypto$1 from 'crypto';
 
 const providerConfig = {
   azure: {
@@ -44,33 +43,7 @@ const providerConfig = {
   }
 };
 
-const IV_LENGTH = 16;
-const rawKey = process.env.H3_OAUTH_ENCRYPTION_KEY;
-if (!rawKey || rawKey.length !== 64) {
-  throw new Error(
-    "[h3-oauth-kit] H3_OAUTH_ENCRYPTION_KEY must be a 64-character hex string (32 bytes)."
-  );
-}
-const ENCRYPTION_KEY = Buffer.from(rawKey, "hex");
-function encrypt(text) {
-  const iv = crypto$1.randomBytes(IV_LENGTH);
-  const cipher = crypto$1.createCipheriv("aes-256-cbc", ENCRYPTION_KEY, iv);
-  const encrypted = Buffer.concat([cipher.update(text), cipher.final()]);
-  return iv.toString("hex") + ":" + encrypted.toString("hex");
-}
-function decrypt(encryptedText) {
-  const [ivHex, encryptedHex] = encryptedText.split(":");
-  const iv = Buffer.from(ivHex, "hex");
-  const encrypted = Buffer.from(encryptedHex, "hex");
-  const decipher = crypto$1.createDecipheriv("aes-256-cbc", ENCRYPTION_KEY, iv);
-  const decrypted = Buffer.concat([
-    decipher.update(encrypted),
-    decipher.final()
-  ]);
-  return decrypted.toString();
-}
-
-function setProviderCookies(event, tokens, provider, options, instanceKey) {
+async function setProviderCookies(event, tokens, provider, options, instanceKey) {
   const providerKey = instanceKey ? `${provider}:${instanceKey}` : provider;
   const base = {
     httpOnly: true,
@@ -90,8 +63,9 @@ function setProviderCookies(event, tokens, provider, options, instanceKey) {
     String(expiry),
     base
   );
+  const config = instanceKey ? getOAuthProviderConfig(provider, instanceKey) : getOAuthProviderConfig(provider);
   if (tokens.refresh_token) {
-    const encryptedRefreshToken = encrypt(tokens.refresh_token);
+    const encryptedRefreshToken = await config.encrypt(tokens.refresh_token);
     setCookie(event, `${providerKey}_refresh_token`, encryptedRefreshToken, {
       ...base,
       maxAge: 30 * 24 * 60 * 60
@@ -321,7 +295,8 @@ async function oAuthTokensAreValid(event, provider, instanceKey) {
     `${providerKey}_access_token_expires_at`
   );
   if (!access_token || !refresh_token || !access_token_expires_at) return false;
-  const encryptedRefreshToken = decrypt(refresh_token);
+  const config = instanceKey ? getOAuthProviderConfig(provider, instanceKey) : getOAuthProviderConfig(provider);
+  const encryptedRefreshToken = await config.decrypt(refresh_token);
   const expires_in = parseInt(access_token_expires_at, 10);
   const now = Math.floor(Date.now() / 1e3);
   const isAccessTokenExpired = now >= expires_in;
@@ -482,23 +457,94 @@ function discoverProviderInstance(event, provider) {
   }
   return void 0;
 }
-function typedInstanceResolver(resolver) {
-  return resolver;
+
+const IV_LENGTH = 16;
+function hexToUint8Array(hex) {
+  const bytes = new Uint8Array(hex.length / 2);
+  for (let i = 0; i < hex.length; i += 2) {
+    bytes[i / 2] = parseInt(hex.substr(i, 2), 16);
+  }
+  return bytes;
 }
-function withInstanceKeys(provider, instanceKeys, resolver) {
-  return {
-    provider,
-    instanceResolver: resolver,
-    __instanceKeys: instanceKeys
-  };
+function uint8ArrayToHex(bytes) {
+  return Array.from(bytes).map((byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+async function createEncryptionKey(hexKey) {
+  if (!hexKey || hexKey.length !== 64) {
+    throw new Error(
+      "Encryption key must be a 64-character hex string (32 bytes)."
+    );
+  }
+  const keyBytes = hexToUint8Array(hexKey);
+  return await crypto.subtle.importKey(
+    "raw",
+    keyBytes,
+    { name: "AES-CBC" },
+    false,
+    ["encrypt", "decrypt"]
+  );
+}
+function createEncryption(hexKey) {
+  const keyPromise = createEncryptionKey(hexKey);
+  async function encrypt(text) {
+    const iv = crypto.getRandomValues(new Uint8Array(IV_LENGTH));
+    const key = await keyPromise;
+    const textBytes = new TextEncoder().encode(text);
+    const encryptedBuffer = await crypto.subtle.encrypt(
+      {
+        name: "AES-CBC",
+        iv
+      },
+      key,
+      textBytes
+    );
+    const encryptedBytes = new Uint8Array(encryptedBuffer);
+    return uint8ArrayToHex(iv) + ":" + uint8ArrayToHex(encryptedBytes);
+  }
+  async function decrypt(encryptedText) {
+    if (typeof encryptedText !== "string") {
+      throw new Error("Encrypted text must be a string");
+    }
+    const [ivHex, encryptedHex] = encryptedText.split(":");
+    if (!ivHex || !encryptedHex) {
+      throw new Error("Invalid encrypted text format");
+    }
+    const iv = hexToUint8Array(ivHex);
+    if (iv.length !== IV_LENGTH) {
+      throw new Error("Invalid IV length in encrypted text");
+    }
+    const encryptedBytes = hexToUint8Array(encryptedHex);
+    const key = await keyPromise;
+    const decryptedBuffer = await crypto.subtle.decrypt(
+      {
+        name: "AES-CBC",
+        iv
+      },
+      key,
+      encryptedBytes
+    );
+    return new TextDecoder().decode(decryptedBuffer);
+  }
+  return { encrypt, decrypt };
 }
 
 const providerRegistry = /* @__PURE__ */ new Map();
-function registerOAuthProvider(provider, instanceOrConfig, maybeConfig) {
-  const isScoped = typeof instanceOrConfig === "string";
-  const key = isScoped ? `${provider}:${instanceOrConfig}` : provider;
-  const config = isScoped ? maybeConfig : instanceOrConfig;
-  providerRegistry.set(key, config);
+function useOAuthRegistry(encryptionKey) {
+  const { encrypt, decrypt } = createEncryption(encryptionKey);
+  function registerOAuthProvider(provider, instanceOrConfig, maybeConfig) {
+    const isScoped = typeof instanceOrConfig === "string";
+    const key = isScoped ? `${provider}:${instanceOrConfig}` : provider;
+    const userConfig = isScoped ? maybeConfig : instanceOrConfig;
+    const config = {
+      ...userConfig,
+      encrypt,
+      decrypt
+    };
+    providerRegistry.set(key, config);
+  }
+  return {
+    registerOAuthProvider
+  };
 }
 function getOAuthProviderConfig(provider, instanceKey) {
   const key = getProviderKey(provider, instanceKey);
@@ -571,7 +617,7 @@ function handleOAuthCallback(provider, options, event) {
       if (!preserveInstance) {
         clearNonPreservedCookies(evt, provider);
       }
-      const tokens = setProviderCookies(
+      const tokens = await setProviderCookies(
         evt,
         rawTokens,
         provider,
@@ -624,12 +670,10 @@ function defineProtectedRoute(providers, handler, options) {
           } else if ("instanceResolver" in def) {
             instanceKey = await def.instanceResolver(event);
           }
-        } else if (options?.resolveInstance) {
-          instanceKey = await options.resolveInstance(event, provider);
         }
         let providerKey = getProviderKey(provider, instanceKey);
         let result = await oAuthTokensAreValid(event, provider, instanceKey);
-        if (!result && !isScoped && !options?.resolveInstance) {
+        if (!result && !isScoped) {
           const discoveredInstanceKey = discoverProviderInstance(
             event,
             provider
@@ -685,7 +729,7 @@ function defineProtectedRoute(providers, handler, options) {
             refreshed,
             tokens
           );
-          tokens = setProviderCookies(
+          tokens = await setProviderCookies(
             event,
             fullToken,
             provider,
@@ -774,5 +818,15 @@ function getDiscoveredProviderTokens(context, provider) {
   }
   return void 0;
 }
+function typedInstanceResolver(resolver) {
+  return resolver;
+}
+function withInstanceKeys(provider, instanceKeys, resolver) {
+  return {
+    provider,
+    instanceResolver: resolver,
+    __instanceKeys: instanceKeys
+  };
+}
 
-export { defineProtectedRoute, deleteProviderCookies, getDiscoveredProviderTokens, getOAuthProviderConfig, handleOAuthCallback, handleOAuthLogin, handleOAuthLogout, hasOAuthProviderConfig, providerRegistry, registerOAuthProvider, typedInstanceResolver, withInstanceKeys };
+export { defineProtectedRoute, deleteProviderCookies, getDiscoveredProviderTokens, getOAuthProviderConfig, handleOAuthCallback, handleOAuthLogin, handleOAuthLogout, hasOAuthProviderConfig, providerRegistry, typedInstanceResolver, useOAuthRegistry, withInstanceKeys };

@@ -4,7 +4,8 @@ import type {
   AzureRefreshTokenResponse,
   TokenValidationResult,
 } from '../src/types';
-import { defineProtectedRoute, registerOAuthProvider } from '../src';
+import { defineProtectedRoute } from '../src';
+import { useOAuthRegistry } from '../src';
 import { createMockEvent } from './utils';
 import {
   oAuthTokensAreValid,
@@ -32,6 +33,7 @@ const mockSetProviderCookies = vi.mocked(setProviderCookies);
 const mockNormalizeRefreshedToken = vi.mocked(normalizeRefreshedToken);
 
 describe('defineProtectedRoute (multi-provider)', () => {
+  const { registerOAuthProvider } = useOAuthRegistry('a'.repeat(64));
   const clioConfig = {
     clientId: 'clio-id',
     clientSecret: 'secret',
@@ -335,7 +337,7 @@ describe('defineProtectedRoute (multi-provider)', () => {
     // Verify that refreshToken was called with the config from the scoped provider
     expect(mockRefreshToken).toHaveBeenCalledWith(
       'valid-refresh',
-      azureConfig, // This should be the config retrieved using instanceKey 'dev'
+      expect.objectContaining(azureConfig),
       'azure',
     );
 
@@ -393,7 +395,7 @@ describe('defineProtectedRoute (multi-provider)', () => {
     // Verify that refreshToken was called with the global config (line 502)
     expect(mockRefreshToken).toHaveBeenCalledWith(
       'valid-refresh',
-      clioConfig, // This should be the global config (no instanceKey)
+      expect.objectContaining(clioConfig), // This should be the global config (no instanceKey)
       'clio',
     );
 
@@ -434,7 +436,7 @@ describe('defineProtectedRoute (multi-provider)', () => {
 
     expect(mockRefreshToken).toHaveBeenCalledWith(
       'invalid-refresh',
-      clioConfig,
+      expect.objectContaining(clioConfig),
       'clio',
     );
   });

@@ -13,6 +13,8 @@ export interface BaseOAuthProviderConfig {
   tokenEndpoint: string;
   redirectUri: string;
   scopes: string[];
+  encrypt: (text: string) => Promise<string>;
+  decrypt: (encryptedText: string) => Promise<string>;
 }
 
 export type OAuthProviderConfig =
@@ -352,3 +354,21 @@ export type LogoutResult = {
 export type LogoutProviderInput =
   | OAuthProvider
   | { provider: OAuthProvider; instanceKey?: string };
+
+export type InputBaseOAuthProviderConfig = Omit<
+  BaseOAuthProviderConfig,
+  'encrypt' | 'decrypt'
+>;
+
+export interface InputAzureOAuthProviderConfig
+  extends Omit<AzureOAuthProviderConfig, 'encrypt' | 'decrypt'> {}
+export interface InputClioOAuthProviderConfig
+  extends Omit<ClioOAuthProviderConfig, 'encrypt' | 'decrypt'> {}
+export interface InputIntuitOAuthProviderConfig
+  extends Omit<IntuitOAuthProviderConfig, 'encrypt' | 'decrypt'> {}
+
+export type InputOAuthProviderConfigMap = {
+  azure: InputAzureOAuthProviderConfig;
+  clio: InputClioOAuthProviderConfig;
+  intuit: InputIntuitOAuthProviderConfig;
+};

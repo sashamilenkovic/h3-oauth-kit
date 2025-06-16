@@ -1,10 +1,10 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, beforeAll } from 'vitest';
 import { oAuthTokensAreValid } from '../../src/utils';
 import { createMockEvent } from '../utils';
 import { getCookie, setCookie } from 'h3';
 import { providerConfig } from '../../src/providerConfig';
-import { encrypt } from '../../src/utils/encryption';
 import { withEncryptedRefreshToken } from '../utils';
+import { getOAuthProviderConfig, useOAuthRegistry } from '../../src/index';
 
 // 🧪 Mock getCookie before testing
 vi.mock('h3', async () => {
@@ -20,6 +20,85 @@ const mockedGetCookie = getCookie as unknown as ReturnType<typeof vi.fn>;
 vi.mocked(getCookie);
 
 const now = Math.floor(Date.now() / 1000);
+const { registerOAuthProvider } = useOAuthRegistry('a'.repeat(64));
+registerOAuthProvider('azure', {
+  clientId: 'azure-client',
+  clientSecret: 'azure-secret',
+  authorizeEndpoint: 'https://azure.auth',
+  tokenEndpoint: 'https://azure.token',
+  redirectUri: 'https://myapp.com/callback',
+  scopes: ['user.read'],
+  tenantId: 'tenant-id',
+});
+
+registerOAuthProvider('clio', {
+  clientId: 'clio-client',
+  clientSecret: 'clio-secret',
+  authorizeEndpoint: 'https://clio.auth',
+  tokenEndpoint: 'https://clio.token',
+  redirectUri: 'https://myapp.com/callback',
+  scopes: ['read'],
+});
+
+const config = getOAuthProviderConfig('clio');
+
+registerOAuthProvider('intuit', {
+  clientId: 'intuit-client',
+  environment: 'sandbox',
+  clientSecret: 'intuit-secret',
+  authorizeEndpoint: 'https://intuit.auth',
+  tokenEndpoint: 'https://intuit.token',
+  redirectUri: 'https://myapp.com/callback',
+  scopes: ['accounting'],
+});
+
+registerOAuthProvider('clio', 'smithlaw', {
+  clientId: 'clio-client',
+  clientSecret: 'clio-secret',
+  authorizeEndpoint: 'https://clio.auth',
+  tokenEndpoint: 'https://clio.token',
+  redirectUri: 'https://myapp.com/callback',
+  scopes: ['read'],
+});
+
+registerOAuthProvider('intuit', 'company123', {
+  clientId: 'intuit-client',
+  environment: 'sandbox',
+  clientSecret: 'intuit-secret',
+  authorizeEndpoint: 'https://intuit.auth',
+  tokenEndpoint: 'https://intuit.token',
+  redirectUri: 'https://myapp.com/callback',
+  scopes: ['accounting'],
+});
+
+registerOAuthProvider('clio', 'joneslaw', {
+  clientId: 'clio-client',
+  clientSecret: 'clio-secret',
+  authorizeEndpoint: 'https://clio.auth',
+  tokenEndpoint: 'https://clio.token',
+  redirectUri: 'https://myapp.com/callback',
+  scopes: ['read'],
+});
+
+registerOAuthProvider('intuit', 'company456', {
+  clientId: 'intuit-client',
+  clientSecret: 'intuit-secret',
+  authorizeEndpoint: 'https://intuit.auth',
+  tokenEndpoint: 'https://intuit.token',
+  redirectUri: 'https://myapp.com/callback',
+  scopes: ['accounting'],
+  environment: 'sandbox',
+});
+
+registerOAuthProvider('azure', 'dev', {
+  clientId: 'azure-client',
+  clientSecret: 'azure-secret',
+  authorizeEndpoint: 'https://azure.auth',
+  tokenEndpoint: 'https://azure.token',
+  redirectUri: 'https://myapp.com/callback',
+  scopes: ['user.read'],
+  tenantId: 'tenant-id',
+});
 
 const testCases = [
   {
@@ -122,7 +201,7 @@ describe('oAuthTokensAreValid', () => {
   it('returns false if token_type does not match expected', async () => {
     const event = createMockEvent();
     setCookie(event, 'clio_access_token', 'a');
-    setCookie(event, 'clio_refresh_token', await encrypt('r')); // ✅ encrypt here
+    setCookie(event, 'clio_refresh_token', await config.encrypt('r')); // ✅ encrypt here
     setCookie(
       event,
       'clio_access_token_expires_at',
@@ -369,6 +448,16 @@ describe('oAuthTokensAreValid', () => {
     });
 
     it('returns expired status for scoped provider when access token is expired', async () => {
+      const { registerOAuthProvider } = useOAuthRegistry('a'.repeat(64));
+      registerOAuthProvider('azure', {
+        clientId: 'azure-client',
+        clientSecret: 'azure-secret',
+        authorizeEndpoint: 'https://azure.auth',
+        tokenEndpoint: 'https://azure.token',
+        redirectUri: 'https://myapp.com/callback',
+        scopes: ['user.read'],
+        tenantId: 'tenant-id',
+      });
       const provider = 'azure' as const;
       const instanceKey = 'dev';
       const expiredTime = String(now - 60);

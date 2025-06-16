@@ -1,9 +1,14 @@
 import type { OAuthProviderConfigMap } from '../src/types';
 
 import { describe, it, expect, beforeEach } from 'vitest';
-import { hasOAuthProviderConfig, registerOAuthProvider } from '../src';
+import {
+  getOAuthProviderConfig,
+  useOAuthRegistry,
+  hasOAuthProviderConfig,
+} from '../src';
 
 describe('hasOAuthProviderConfig', () => {
+  const { registerOAuthProvider } = useOAuthRegistry('a'.repeat(64));
   beforeEach(async () => {
     // Clear registry between tests by resetting the module cache
     const registry = await import('../src');
@@ -16,7 +21,7 @@ describe('hasOAuthProviderConfig', () => {
   });
 
   it('returns true for registered provider', () => {
-    const config: OAuthProviderConfigMap['clio'] = {
+    const config = {
       clientId: 'test-client',
       clientSecret: 'test-secret',
       tokenEndpoint: 'https://example.com/token',
@@ -37,7 +42,7 @@ describe('hasOAuthProviderConfig', () => {
   });
 
   it('returns true for registered scoped provider instance', () => {
-    const config: OAuthProviderConfigMap['clio'] = {
+    const config = {
       clientId: 'scoped-client',
       clientSecret: 'scoped-secret',
       tokenEndpoint: 'https://example.com/token',
@@ -53,7 +58,7 @@ describe('hasOAuthProviderConfig', () => {
   });
 
   it('distinguishes between global and scoped provider configurations', () => {
-    const globalConfig: OAuthProviderConfigMap['clio'] = {
+    const globalConfig = {
       clientId: 'global-client',
       clientSecret: 'global-secret',
       tokenEndpoint: 'https://example.com/token',
@@ -62,12 +67,12 @@ describe('hasOAuthProviderConfig', () => {
       scopes: ['read'],
     };
 
-    const scopedConfig: OAuthProviderConfigMap['clio'] = {
+    const scopedConfig = {
       clientId: 'scoped-client',
       clientSecret: 'scoped-secret',
       tokenEndpoint: 'https://example.com/token',
       authorizeEndpoint: 'https://example.com/authorize',
-      redirectUri: 'https://myapp.com/callback/smithlaw',
+      redirectUri: 'https://example.com/callback/smithlaw',
       scopes: ['read', 'write'],
     };
 
@@ -87,7 +92,7 @@ describe('hasOAuthProviderConfig', () => {
   });
 
   it('handles multiple scoped instances for the same provider', () => {
-    const smithlawConfig: OAuthProviderConfigMap['clio'] = {
+    const smithlawConfig = {
       clientId: 'smithlaw-client',
       clientSecret: 'smithlaw-secret',
       tokenEndpoint: 'https://example.com/token',
@@ -96,7 +101,7 @@ describe('hasOAuthProviderConfig', () => {
       scopes: ['read', 'write'],
     };
 
-    const joneslawConfig: OAuthProviderConfigMap['clio'] = {
+    const joneslawConfig = {
       clientId: 'joneslaw-client',
       clientSecret: 'joneslaw-secret',
       tokenEndpoint: 'https://example.com/token',
@@ -121,7 +126,7 @@ describe('hasOAuthProviderConfig', () => {
   });
 
   it('works with different provider types', () => {
-    const clioConfig: OAuthProviderConfigMap['clio'] = {
+    const clioConfig = {
       clientId: 'clio-client',
       clientSecret: 'clio-secret',
       tokenEndpoint: 'https://clio.com/token',
@@ -130,14 +135,14 @@ describe('hasOAuthProviderConfig', () => {
       scopes: ['read', 'write'],
     };
 
-    const intuitConfig: OAuthProviderConfigMap['intuit'] = {
+    const intuitConfig = {
       clientId: 'intuit-client',
       clientSecret: 'intuit-secret',
       tokenEndpoint: 'https://intuit.com/token',
       authorizeEndpoint: 'https://intuit.com/authorize',
       redirectUri: 'https://myapp.com/callback/intuit',
       scopes: ['accounting'],
-      environment: 'sandbox',
+      environment: 'sandbox' as 'sandbox',
     };
 
     // Initially, neither should exist
@@ -156,7 +161,7 @@ describe('hasOAuthProviderConfig', () => {
   });
 
   it('handles empty instance keys correctly', () => {
-    const config: OAuthProviderConfigMap['clio'] = {
+    const config = {
       clientId: 'test-client',
       clientSecret: 'test-secret',
       tokenEndpoint: 'https://example.com/token',

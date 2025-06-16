@@ -1,9 +1,10 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { registerOAuthProvider } from '../src';
-import { getOAuthProviderConfig } from '../src/index';
-import type { OAuthProviderConfigMap } from '../src/types';
+import { getOAuthProviderConfig, useOAuthRegistry } from '../src';
 
 describe('registerOAuthProvider', () => {
+  const { registerOAuthProvider: useOAuthProvider } = useOAuthRegistry(
+    'a'.repeat(64),
+  );
   beforeEach(() => {
     // Clear registry between tests
     try {
@@ -15,7 +16,7 @@ describe('registerOAuthProvider', () => {
   });
 
   it('registers a provider config successfully', () => {
-    const config: OAuthProviderConfigMap['clio'] = {
+    const config = {
       clientId: 'abc123',
       clientSecret: 'secret',
       tokenEndpoint: 'https://clio.com/oauth/token',
@@ -24,14 +25,14 @@ describe('registerOAuthProvider', () => {
       scopes: ['activity.read', 'contacts.read'],
     };
 
-    registerOAuthProvider('clio', config);
+    useOAuthProvider('clio', config);
 
     const stored = getOAuthProviderConfig('clio');
-    expect(stored).toEqual(config);
+    expect(stored).toMatchObject(config);
   });
 
   it('overwrites an existing provider config', () => {
-    const initial: OAuthProviderConfigMap['azure'] = {
+    const initial = {
       clientId: 'original',
       clientSecret: 'secret1',
       tokenEndpoint: 'https://login.microsoftonline.com/token',
@@ -46,8 +47,8 @@ describe('registerOAuthProvider', () => {
       clientId: 'updated',
     };
 
-    registerOAuthProvider('azure', initial);
-    registerOAuthProvider('azure', updated);
+    useOAuthProvider('azure', initial);
+    useOAuthProvider('azure', updated);
 
     const result = getOAuthProviderConfig('azure');
     expect(result.clientId).toBe('updated');
@@ -55,7 +56,7 @@ describe('registerOAuthProvider', () => {
 
   describe('scoped/instance key registration', () => {
     it('registers a scoped provider config with instance key', () => {
-      const config: OAuthProviderConfigMap['clio'] = {
+      const config = {
         clientId: 'smithlaw-client-id',
         clientSecret: 'smithlaw-secret',
         tokenEndpoint: 'https://clio.com/oauth/token',
@@ -64,14 +65,14 @@ describe('registerOAuthProvider', () => {
         scopes: ['activity.read', 'contacts.read'],
       };
 
-      registerOAuthProvider('clio', 'smithlaw', config);
+      useOAuthProvider('clio', 'smithlaw', config);
 
       const stored = getOAuthProviderConfig('clio', 'smithlaw');
-      expect(stored).toEqual(config);
+      expect(stored).toMatchObject(config);
     });
 
     it('allows different configs for global and scoped providers', () => {
-      const globalConfig: OAuthProviderConfigMap['clio'] = {
+      const globalConfig = {
         clientId: 'global-client-id',
         clientSecret: 'global-secret',
         tokenEndpoint: 'https://clio.com/oauth/token',
@@ -80,7 +81,7 @@ describe('registerOAuthProvider', () => {
         scopes: ['activity.read'],
       };
 
-      const smithlawConfig: OAuthProviderConfigMap['clio'] = {
+      const smithlawConfig = {
         clientId: 'smithlaw-client-id',
         clientSecret: 'smithlaw-secret',
         tokenEndpoint: 'https://clio.com/oauth/token',
@@ -89,20 +90,20 @@ describe('registerOAuthProvider', () => {
         scopes: ['activity.read', 'contacts.read'],
       };
 
-      registerOAuthProvider('clio', globalConfig);
-      registerOAuthProvider('clio', 'smithlaw', smithlawConfig);
+      useOAuthProvider('clio', globalConfig);
+      useOAuthProvider('clio', 'smithlaw', smithlawConfig);
 
       const globalStored = getOAuthProviderConfig('clio');
       const smithlawStored = getOAuthProviderConfig('clio', 'smithlaw');
 
-      expect(globalStored).toEqual(globalConfig);
-      expect(smithlawStored).toEqual(smithlawConfig);
+      expect(globalStored).toMatchObject(globalConfig);
+      expect(smithlawStored).toMatchObject(smithlawConfig);
       expect(globalStored.clientId).toBe('global-client-id');
       expect(smithlawStored.clientId).toBe('smithlaw-client-id');
     });
 
     it('allows multiple scoped instances for the same provider', () => {
-      const smithlawConfig: OAuthProviderConfigMap['clio'] = {
+      const smithlawConfig = {
         clientId: 'smithlaw-client-id',
         clientSecret: 'smithlaw-secret',
         tokenEndpoint: 'https://clio.com/oauth/token',
@@ -111,7 +112,7 @@ describe('registerOAuthProvider', () => {
         scopes: ['activity.read'],
       };
 
-      const joneslawConfig: OAuthProviderConfigMap['clio'] = {
+      const joneslawConfig = {
         clientId: 'joneslaw-client-id',
         clientSecret: 'joneslaw-secret',
         tokenEndpoint: 'https://clio.com/oauth/token',
@@ -120,20 +121,20 @@ describe('registerOAuthProvider', () => {
         scopes: ['contacts.read'],
       };
 
-      registerOAuthProvider('clio', 'smithlaw', smithlawConfig);
-      registerOAuthProvider('clio', 'joneslaw', joneslawConfig);
+      useOAuthProvider('clio', 'smithlaw', smithlawConfig);
+      useOAuthProvider('clio', 'joneslaw', joneslawConfig);
 
       const smithlawStored = getOAuthProviderConfig('clio', 'smithlaw');
       const joneslawStored = getOAuthProviderConfig('clio', 'joneslaw');
 
-      expect(smithlawStored).toEqual(smithlawConfig);
-      expect(joneslawStored).toEqual(joneslawConfig);
+      expect(smithlawStored).toMatchObject(smithlawConfig);
+      expect(joneslawStored).toMatchObject(joneslawConfig);
       expect(smithlawStored.clientId).toBe('smithlaw-client-id');
       expect(joneslawStored.clientId).toBe('joneslaw-client-id');
     });
 
     it('overwrites existing scoped provider config', () => {
-      const initialConfig: OAuthProviderConfigMap['azure'] = {
+      const initialConfig = {
         clientId: 'initial-smithlaw-id',
         clientSecret: 'secret',
         tokenEndpoint: 'https://login.microsoftonline.com/token',
@@ -143,7 +144,7 @@ describe('registerOAuthProvider', () => {
         tenantId: 'tenant-1',
       };
 
-      const updatedConfig: OAuthProviderConfigMap['azure'] = {
+      const updatedConfig = {
         clientId: 'updated-smithlaw-id',
         clientSecret: 'secret',
         tokenEndpoint: 'https://login.microsoftonline.com/token',
@@ -153,17 +154,17 @@ describe('registerOAuthProvider', () => {
         tenantId: 'tenant-2',
       };
 
-      registerOAuthProvider('azure', 'smithlaw', initialConfig);
-      registerOAuthProvider('azure', 'smithlaw', updatedConfig);
+      useOAuthProvider('azure', 'smithlaw', initialConfig);
+      useOAuthProvider('azure', 'smithlaw', updatedConfig);
 
       const stored = getOAuthProviderConfig('azure', 'smithlaw');
-      expect(stored).toEqual(updatedConfig);
+      expect(stored).toMatchObject(updatedConfig);
       expect(stored.clientId).toBe('updated-smithlaw-id');
       expect(stored.tenantId).toBe('tenant-2');
     });
 
     it('works with different provider types for scoped registration', () => {
-      const intuitConfig: OAuthProviderConfigMap['intuit'] = {
+      const intuitConfig = {
         clientId: 'intuit-smithlaw-id',
         clientSecret: 'intuit-secret',
         tokenEndpoint:
@@ -171,13 +172,13 @@ describe('registerOAuthProvider', () => {
         authorizeEndpoint: 'https://appcenter.intuit.com/connect/oauth2',
         redirectUri: 'http://localhost/intuit/callback',
         scopes: ['com.intuit.quickbooks.accounting'],
-        environment: 'sandbox',
+        environment: 'sandbox' as 'sandbox',
       };
 
-      registerOAuthProvider('intuit', 'smithlaw', intuitConfig);
+      useOAuthProvider('intuit', 'smithlaw', intuitConfig);
 
       const stored = getOAuthProviderConfig('intuit', 'smithlaw');
-      expect(stored).toEqual(intuitConfig);
+      expect(stored).toMatchObject(intuitConfig);
       expect(stored.environment).toBe('sandbox');
     });
   });

@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { handleOAuthCallback, registerOAuthProvider } from '../src';
+import { handleOAuthCallback } from '../src';
+import { useOAuthRegistry } from '../src';
 import { createMockEvent } from './utils';
 import { getCookie, getQuery, sendRedirect } from 'h3';
 import { ofetch } from 'ofetch';
@@ -51,12 +52,13 @@ function mockOAuthStateCookie(providerKey: string, csrfValue: string) {
 }
 
 describe('handleOAuthCallback', () => {
+  const { registerOAuthProvider } = useOAuthRegistry('a'.repeat(64));
   const config = {
     clientId: 'test-client-id',
     clientSecret: 'test-secret',
     tokenEndpoint: 'https://example.com/token',
     authorizeEndpoint: 'https://example.com/auth',
-    redirectUri: 'https://myapp.com/callback',
+    redirectUri: 'https://example.com/callback',
     scopes: ['read', 'write'],
   };
 
@@ -431,12 +433,13 @@ describe('handleOAuthCallback', () => {
 });
 
 describe('handleOAuthCallback as route handler', () => {
+  const { registerOAuthProvider } = useOAuthRegistry('a'.repeat(64));
   const config = {
     clientId: 'test-client-id',
     clientSecret: 'test-secret',
     tokenEndpoint: 'https://example.com/token',
     authorizeEndpoint: 'https://example.com/auth',
-    redirectUri: 'https://myapp.com/callback',
+    redirectUri: 'https://example.com/callback',
     scopes: ['read', 'write'],
   };
 
@@ -559,12 +562,13 @@ describe('handleOAuthCallback as route handler', () => {
 });
 
 describe('handleOAuthCallback - scoped provider integration', () => {
+  const { registerOAuthProvider } = useOAuthRegistry('a'.repeat(64));
   const config = {
     clientId: 'test-client-id',
     clientSecret: 'test-secret',
     tokenEndpoint: 'https://example.com/token',
     authorizeEndpoint: 'https://example.com/auth',
-    redirectUri: 'https://myapp.com/callback',
+    redirectUri: 'https://example.com/callback',
     scopes: ['read', 'write'],
     tenantId: 'test-tenant-id',
   };
@@ -724,12 +728,13 @@ describe('handleOAuthCallback - scoped provider integration', () => {
 });
 
 describe('handleOAuthCallback - preserveInstance behavior', () => {
+  const { registerOAuthProvider } = useOAuthRegistry('a'.repeat(64));
   const config = {
     clientId: 'test-client-id',
     clientSecret: 'test-secret',
     tokenEndpoint: 'https://example.com/token',
     authorizeEndpoint: 'https://example.com/auth',
-    redirectUri: 'https://myapp.com/callback',
+    redirectUri: 'https://example.com/callback',
     scopes: ['read', 'write'],
   };
 

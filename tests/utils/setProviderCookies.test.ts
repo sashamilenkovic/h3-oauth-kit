@@ -1,11 +1,18 @@
 import type { OAuthProvider } from '../../src/types';
 import type { Mock } from 'vitest';
 
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import {
+  describe,
+  it,
+  expect,
+  vi,
+  beforeEach,
+  afterEach,
+  beforeAll,
+} from 'vitest';
 import { setProviderCookies } from '../../src/utils';
 import { createMockEvent } from '../utils';
 import { providerConfig } from '../../src/providerConfig';
-import { decrypt } from '../../src/utils/encryption';
 
 vi.mock('h3', async () => {
   const actual = await vi.importActual<typeof import('h3')>('h3');
@@ -16,6 +23,7 @@ vi.mock('h3', async () => {
 });
 
 import { setCookie } from 'h3';
+import { getOAuthProviderConfig, useOAuthRegistry } from '../../src';
 
 const cases = [
   {
@@ -54,12 +62,93 @@ const cases = [
   },
 ];
 
+let clioConfig: ReturnType<typeof getOAuthProviderConfig>;
+let azureConfig: ReturnType<typeof getOAuthProviderConfig>;
+let smithlawConfig: ReturnType<typeof getOAuthProviderConfig>;
+let azureDevConfig: ReturnType<typeof getOAuthProviderConfig>;
+
 describe('setProviderCookies', () => {
   const originalClioFields = [...providerConfig.clio.providerSpecificFields];
 
   beforeEach(() => {
     (setCookie as unknown as Mock).mockClear();
     providerConfig.clio.providerSpecificFields = ['token_type'];
+  });
+
+  beforeAll(() => {
+    // Use a fixed test key for deterministic encryption in tests
+    const { registerOAuthProvider } = useOAuthRegistry('a'.repeat(64));
+    registerOAuthProvider('clio', {
+      clientId: 'test',
+      clientSecret: 'test',
+      authorizeEndpoint: 'test',
+      tokenEndpoint: 'test',
+      redirectUri: 'test',
+      scopes: ['test'],
+    });
+
+    registerOAuthProvider('azure', {
+      clientId: 'test',
+      clientSecret: 'test',
+      authorizeEndpoint: 'test',
+      tokenEndpoint: 'test',
+      redirectUri: 'test',
+      scopes: ['test'],
+      tenantId: 'test',
+    });
+
+    registerOAuthProvider('azure', 'dev', {
+      clientId: 'test',
+      clientSecret: 'test',
+      authorizeEndpoint: 'test',
+      tokenEndpoint: 'test',
+      redirectUri: 'test',
+      scopes: ['test'],
+      tenantId: 'test',
+    });
+
+    registerOAuthProvider('azure', 'smithlaw', {
+      clientId: 'test',
+      clientSecret: 'test',
+      authorizeEndpoint: 'test',
+      tokenEndpoint: 'test',
+      redirectUri: 'test',
+      scopes: ['test'],
+      tenantId: 'test',
+    });
+
+    registerOAuthProvider('clio', 'smithlaw', {
+      clientId: 'test',
+      clientSecret: 'test',
+      authorizeEndpoint: 'test',
+      tokenEndpoint: 'test',
+      redirectUri: 'test',
+      scopes: ['test'],
+    });
+
+    registerOAuthProvider('intuit', {
+      clientId: 'test',
+      clientSecret: 'test',
+      authorizeEndpoint: 'test',
+      tokenEndpoint: 'test',
+      redirectUri: 'test',
+      scopes: ['test'],
+      environment: 'sandbox',
+    });
+
+    registerOAuthProvider('clio', 'custom', {
+      clientId: 'test',
+      clientSecret: 'test',
+      authorizeEndpoint: 'test',
+      tokenEndpoint: 'test',
+      redirectUri: 'test',
+      scopes: ['test'],
+    });
+
+    clioConfig = getOAuthProviderConfig('clio');
+    azureConfig = getOAuthProviderConfig('azure');
+    azureDevConfig = getOAuthProviderConfig('azure', 'dev');
+    smithlawConfig = getOAuthProviderConfig('clio', 'smithlaw');
   });
 
   afterEach(() => {
@@ -92,7 +181,7 @@ describe('setProviderCookies', () => {
           expect(cookie?.value).toBe(stripped);
         } else if (expectedName.endsWith('_refresh_token')) {
           expect(typeof cookie?.value).toBe('string');
-          expect(await decrypt(cookie!.value)).toBe(expectedValue);
+          expect(await clioConfig.decrypt(cookie!.value)).toBe(expectedValue);
         } else {
           expect(cookie?.value).toEqual(expectedValue);
         }
@@ -206,7 +295,7 @@ describe('setProviderCookies', () => {
     );
 
     expect(access?.[2]).toBe('scoped123');
-    expect(await decrypt(refresh?.[2]!)).toBe('scopedRefresh');
+    expect(await smithlawConfig.decrypt(refresh?.[2]!)).toBe('scopedRefresh');
   });
 
   it('applies Intuit x_refresh_token_expires_in setter to create absolute timestamp', async () => {

@@ -1,18 +1,18 @@
 import type { OAuthProviderConfigMap } from '../src/types';
 
 import { describe, it, expect, beforeEach } from 'vitest';
-import { getOAuthProviderConfig, registerOAuthProvider } from '../src';
+import { getOAuthProviderConfig, useOAuthRegistry } from '../src';
 
 describe('getOAuthProviderConfig', () => {
+  const { registerOAuthProvider } = useOAuthRegistry('a'.repeat(64));
   beforeEach(async () => {
     // Clear registry between tests by resetting the module cache
     const registry = await import('../src');
-
     registry.providerRegistry.clear();
   });
 
   it('returns the registered config for a known provider', () => {
-    const config: OAuthProviderConfigMap['clio'] = {
+    const config = {
       clientId: 'abc',
       clientSecret: 'secret',
       tokenEndpoint: 'https://example.com/token',
@@ -25,7 +25,7 @@ describe('getOAuthProviderConfig', () => {
 
     const result = getOAuthProviderConfig('clio');
 
-    expect(result).toEqual(config);
+    expect(result).toMatchObject(config);
   });
 
   it('throws if provider is not registered', () => {
@@ -43,7 +43,7 @@ describe('getOAuthProviderConfig', () => {
   });
 
   it('returns the registered config for a scoped provider instance', () => {
-    const globalConfig: OAuthProviderConfigMap['clio'] = {
+    const globalConfig = {
       clientId: 'global-client',
       clientSecret: 'global-secret',
       tokenEndpoint: 'https://example.com/token',
@@ -52,7 +52,7 @@ describe('getOAuthProviderConfig', () => {
       scopes: ['read'],
     };
 
-    const scopedConfig: OAuthProviderConfigMap['clio'] = {
+    const scopedConfig = {
       clientId: 'scoped-client',
       clientSecret: 'scoped-secret',
       tokenEndpoint: 'https://example.com/token',
@@ -67,15 +67,15 @@ describe('getOAuthProviderConfig', () => {
 
     // Should return global config when no instanceKey provided
     const globalResult = getOAuthProviderConfig('clio');
-    expect(globalResult).toEqual(globalConfig);
+    expect(globalResult).toMatchObject(globalConfig);
 
     // Should return scoped config when instanceKey provided
     const scopedResult = getOAuthProviderConfig('clio', 'smithlaw');
-    expect(scopedResult).toEqual(scopedConfig);
+    expect(scopedResult).toMatchObject(scopedConfig);
   });
 
   it('throws if scoped provider instance is not registered', () => {
-    const globalConfig: OAuthProviderConfigMap['clio'] = {
+    const globalConfig = {
       clientId: 'global-client',
       clientSecret: 'global-secret',
       tokenEndpoint: 'https://example.com/token',
@@ -103,7 +103,7 @@ describe('getOAuthProviderConfig', () => {
   });
 
   it('allows multiple scoped instances for the same provider', () => {
-    const smithlawConfig: OAuthProviderConfigMap['clio'] = {
+    const smithlawConfig = {
       clientId: 'smithlaw-client',
       clientSecret: 'smithlaw-secret',
       tokenEndpoint: 'https://example.com/token',
@@ -112,7 +112,7 @@ describe('getOAuthProviderConfig', () => {
       scopes: ['read', 'write'],
     };
 
-    const joneslawConfig: OAuthProviderConfigMap['clio'] = {
+    const joneslawConfig = {
       clientId: 'joneslaw-client',
       clientSecret: 'joneslaw-secret',
       tokenEndpoint: 'https://example.com/token',
@@ -127,10 +127,10 @@ describe('getOAuthProviderConfig', () => {
 
     // Should return correct config for each instance
     const smithlawResult = getOAuthProviderConfig('clio', 'smithlaw');
-    expect(smithlawResult).toEqual(smithlawConfig);
+    expect(smithlawResult).toMatchObject(smithlawConfig);
 
     const joneslawResult = getOAuthProviderConfig('clio', 'joneslaw');
-    expect(joneslawResult).toEqual(joneslawConfig);
+    expect(joneslawResult).toMatchObject(joneslawConfig);
 
     // Configs should be independent
     expect(smithlawResult).not.toEqual(joneslawResult);

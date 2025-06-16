@@ -18,6 +18,7 @@ import type {
   ProviderId,
   GetProviderKey,
   TokenFor,
+  InputOAuthProviderConfigMap,
 } from './types';
 
 import {
@@ -46,6 +47,7 @@ import {
   clearNonPreservedCookies,
   discoverProviderInstance,
 } from './utils';
+import { createEncryption } from './utils/encryption';
 
 /**
  * @internal
@@ -63,45 +65,58 @@ import {
  */
 export const providerRegistry = new Map<string, OAuthProviderConfig>();
 
-/**
- * Registers an OAuth provider configuration into the internal registry.
- *
- * ### Usage:
- * - Global (default for the provider):
- *   ```ts
- *   registerOAuthProvider("clio", config);
- *   ```
- *
- * - Per-instance (e.g. multi-tenant or per OAuth app):
- *   ```ts
- *   registerOAuthProvider("clio", "smithlaw", config);
- *   ```
- *
- * @param provider - The provider key (e.g., `"clio"`, `"intuit"`).
- * @param instanceKey - Optional instance identifier for multi-tenant use.
- * @param config - The OAuth configuration object.
- */
-export function registerOAuthProvider<P extends OAuthProvider>(
-  provider: P,
-  config: OAuthProviderConfigMap[P],
-): void;
+export function useOAuthRegistry(encryptionKey: string) {
+  const { encrypt, decrypt } = createEncryption(encryptionKey);
 
-export function registerOAuthProvider<P extends OAuthProvider>(
-  provider: P,
-  instanceKey: string,
-  config: OAuthProviderConfigMap[P],
-): void;
+  /**
+   * Registers an OAuth provider configuration into the internal registry.
+   *
+   * ### Usage:
+   * - Global (default for the provider):
+   *   ```ts
+   *   registerOAuthProvider("clio", config);
+   *   ```
+   *
+   * - Per-instance (e.g. multi-tenant or per OAuth app):
+   *   ```ts
+   *   registerOAuthProvider("clio", "smithlaw", config);
+   *   ```
+   *
+   * @param provider - The provider key (e.g., `"clio"`, `"intuit"`).
+   * @param instanceKey - Optional instance identifier for multi-tenant use.
+   * @param config - The OAuth configuration object.
+   */
+  function registerOAuthProvider<P extends OAuthProvider>(
+    provider: P,
+    config: InputOAuthProviderConfigMap[P],
+  ): void;
 
-export function registerOAuthProvider<P extends OAuthProvider>(
-  provider: P,
-  instanceOrConfig: string | OAuthProviderConfigMap[P],
-  maybeConfig?: OAuthProviderConfigMap[P],
-): void {
-  const isScoped = typeof instanceOrConfig === 'string';
-  const key = isScoped ? `${provider}:${instanceOrConfig}` : provider;
-  const config = isScoped ? maybeConfig! : instanceOrConfig;
+  function registerOAuthProvider<P extends OAuthProvider>(
+    provider: P,
+    instanceKey: string,
+    config: InputOAuthProviderConfigMap[P],
+  ): void;
 
-  providerRegistry.set(key, config);
+  function registerOAuthProvider<P extends OAuthProvider>(
+    provider: P,
+    instanceOrConfig: string | InputOAuthProviderConfigMap[P],
+    maybeConfig?: InputOAuthProviderConfigMap[P],
+  ): void {
+    const isScoped = typeof instanceOrConfig === 'string';
+    const key = isScoped ? `${provider}:${instanceOrConfig}` : provider;
+    const userConfig = isScoped ? maybeConfig! : instanceOrConfig;
+    // Add encrypt/decrypt internally
+    const config = {
+      ...userConfig,
+      encrypt,
+      decrypt,
+    } as OAuthProviderConfigMap[P];
+    providerRegistry.set(key, config);
+  }
+
+  return {
+    registerOAuthProvider,
+  };
 }
 
 /**

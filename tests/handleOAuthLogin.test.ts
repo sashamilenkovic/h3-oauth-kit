@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { handleOAuthLogin, registerOAuthProvider } from '../src';
+import { handleOAuthLogin } from '../src';
+import { useOAuthRegistry } from '../src';
 import { createMockEvent } from './utils';
 
 import * as utils from '../src/utils';
@@ -25,6 +26,7 @@ const clioConfig = {
 };
 
 describe('handleOAuthLogin', () => {
+  const { registerOAuthProvider } = useOAuthRegistry('a'.repeat(64));
   beforeEach(() => {
     vi.resetAllMocks();
     vi.spyOn(utils, 'resolveState').mockReturnValue('mocked-state');
@@ -163,6 +165,7 @@ describe('handleOAuthLogin', () => {
 });
 
 describe('handleOAuthLogin - preserveInstance behavior', () => {
+  const { registerOAuthProvider } = useOAuthRegistry('a'.repeat(64));
   beforeEach(() => {
     vi.resetAllMocks();
     vi.spyOn(utils, 'resolveState').mockReturnValue('mocked-state');

@@ -1,7 +1,7 @@
 import type { H3Event } from 'h3';
 import { IncomingMessage, ServerResponse } from 'node:http';
 import { createEvent } from 'h3';
-import { encrypt } from '../src/utils/encryption';
+import { getOAuthProviderConfig, type OAuthProvider } from '../src';
 
 /**
  * Creates a mock H3Event for unit testing.
@@ -38,10 +38,12 @@ export async function withEncryptedRefreshToken<
   P extends string,
   T extends Record<string, any>, // ⬅️ changed from string to any
 >(provider: P, tokens: T): Promise<T> {
+  const config = getOAuthProviderConfig(provider as OAuthProvider);
+
   const key = `${provider}_refresh_token` as keyof T;
   return {
     ...tokens,
-    [key]: await encrypt(tokens[key] as string),
+    [key]: await config.encrypt(tokens[key] as string),
   };
 }
 

@@ -18,7 +18,7 @@ import type {
 import { setCookie, getCookie, deleteCookie, getQuery, createError } from 'h3';
 import { providerConfig } from '../providerConfig';
 import { ofetch } from 'ofetch';
-import { encrypt, decrypt } from './encryption';
+import { getOAuthProviderConfig } from '..';
 
 /**
  * @internal
@@ -76,8 +76,12 @@ export async function setProviderCookies<P extends OAuthProvider>(
     base,
   );
 
+  const config = instanceKey
+    ? getOAuthProviderConfig(provider, instanceKey)
+    : getOAuthProviderConfig(provider);
+
   if (tokens.refresh_token) {
-    const encryptedRefreshToken = await encrypt(tokens.refresh_token);
+    const encryptedRefreshToken = await config.encrypt(tokens.refresh_token);
 
     setCookie(event, `${providerKey}_refresh_token`, encryptedRefreshToken, {
       ...base,
@@ -650,7 +654,11 @@ export async function oAuthTokensAreValid<P extends OAuthProvider>(
 
   if (!access_token || !refresh_token || !access_token_expires_at) return false;
 
-  const encryptedRefreshToken = await decrypt(refresh_token);
+  const config = instanceKey
+    ? getOAuthProviderConfig(provider, instanceKey)
+    : getOAuthProviderConfig(provider);
+
+  const encryptedRefreshToken = await config.decrypt(refresh_token);
 
   const expires_in = parseInt(access_token_expires_at, 10);
 
