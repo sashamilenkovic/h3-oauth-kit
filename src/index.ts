@@ -619,6 +619,9 @@ export function defineProtectedRoute<
       const isScoped = typeof def !== 'string';
       const provider = isScoped ? def.provider : def;
 
+      console.log('def', JSON.stringify(def));
+      console.log('provider', provider);
+
       try {
         // Resolve instanceKey: use explicit instanceKey or instanceResolver
         let instanceKey: string | undefined;
@@ -719,6 +722,8 @@ export function defineProtectedRoute<
             tokens,
           );
 
+          console.log('fullToken', JSON.stringify(fullToken));
+
           tokens = await setProviderCookies(
             event,
             fullToken,
@@ -726,6 +731,8 @@ export function defineProtectedRoute<
             options?.cookieOptions,
             instanceKey,
           );
+
+          console.log('tokens', JSON.stringify(tokens));
         }
 
         // Correctly type-safe assign token using GetProviderKey
@@ -734,6 +741,7 @@ export function defineProtectedRoute<
         type Token = TokenFor<ProviderId<Def>>;
         (ctx.h3OAuthKit as unknown as Record<Key, Token>)[providerKey as Key] =
           tokens as Token;
+        console.log('tokens reassigned', JSON.stringify(tokens));
       } catch (error) {
         console.log('error', JSON.stringify(error));
         if (options?.onAuthFailure) {
