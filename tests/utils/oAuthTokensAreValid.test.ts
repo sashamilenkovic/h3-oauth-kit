@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach, beforeAll } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { oAuthTokensAreValid } from '../../src/utils';
 import { createMockEvent } from '../utils';
 import { getCookie, setCookie } from 'h3';

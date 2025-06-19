@@ -201,7 +201,6 @@ export interface OAuthLoginOptions {
   redirect?: boolean;
   state?: OAuthStateValue;
   preserveInstance?: boolean;
-  requireLogin?: boolean;
 }
 
 export interface OAuthErrorResponse {

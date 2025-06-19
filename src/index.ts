@@ -303,7 +303,6 @@ export function handleOAuthLogin<P extends OAuthProvider>(
       redirectUri: config.redirectUri,
       scopes: config.scopes,
       state,
-      requireLogin: options?.requireLogin ?? false,
     });
 
     console.log('authUrl', authUrl);
@@ -349,7 +348,7 @@ export function handleOAuthCallback<P extends OAuthProvider>(
       event: H3Event,
       provider: P,
     ) => Promise<unknown> | unknown;
-    validateUser?: (
+    instanceEquivalent?: (
       rawTokens: OAuthProviderTokenMap[P],
       event: H3Event,
       provider: P,
@@ -375,7 +374,7 @@ export function handleOAuthCallback<P extends OAuthProvider>(
       event: H3Event,
       provider: P,
     ) => Promise<unknown> | unknown;
-    validateUser?: (
+    instanceEquivalent?: (
       rawTokens: OAuthProviderTokenMap[P],
       event: H3Event,
       provider: P,
@@ -397,7 +396,7 @@ export function handleOAuthCallback<P extends OAuthProvider>(
       event: H3Event,
       provider: P,
     ) => Promise<unknown> | unknown;
-    validateUser?: (
+    instanceEquivalent?: (
       rawTokens: OAuthProviderTokenMap[P],
       event: H3Event,
       provider: P,
@@ -418,7 +417,7 @@ export function handleOAuthCallback<P extends OAuthProvider>(
       event: H3Event,
       provider: P,
     ) => Promise<unknown> | unknown;
-    validateUser?: (
+    instanceEquivalent?: (
       rawTokens: OAuthProviderTokenMap[P],
       event: H3Event,
       provider: P,
@@ -479,8 +478,8 @@ export function handleOAuthCallback<P extends OAuthProvider>(
       console.log('rawTokens', JSON.stringify(rawTokens));
 
       // Add user validation step
-      if (options?.validateUser) {
-        const isValid = await options.validateUser(
+      if (options?.instanceEquivalent) {
+        const isValid = await options.instanceEquivalent(
           rawTokens,
           evt,
           provider,
