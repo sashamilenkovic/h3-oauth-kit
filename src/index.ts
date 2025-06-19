@@ -673,6 +673,7 @@ export function defineProtectedRoute<
         let tokens = result.tokens;
 
         if (result.status === 'expired') {
+          console.log('result is expired', JSON.stringify(tokens));
           const config = instanceKey
             ? getOAuthProviderConfig(provider, instanceKey)
             : getOAuthProviderConfig(provider);
@@ -682,6 +683,8 @@ export function defineProtectedRoute<
             config,
             provider,
           );
+
+          console.log('refreshed', JSON.stringify(refreshed));
 
           if (!refreshed) {
             const error = createError({
@@ -724,6 +727,7 @@ export function defineProtectedRoute<
         (ctx.h3OAuthKit as unknown as Record<Key, Token>)[providerKey as Key] =
           tokens as Token;
       } catch (error) {
+        console.log('error', JSON.stringify(error));
         if (options?.onAuthFailure) {
           const response = await options.onAuthFailure(
             event,
