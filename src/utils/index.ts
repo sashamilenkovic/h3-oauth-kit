@@ -602,7 +602,7 @@ export async function refreshToken<P extends OAuthProvider>(
       },
     );
 
-    console.log('refreshToken success', JSON.stringify(tokenResponse));
+    console.log('refreshToken', JSON.stringify(tokenResponse));
 
     // Cast back to token response — optional string coercion step removed
     return tokenResponse;
