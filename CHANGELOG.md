@@ -1,3 +1,10 @@
+# [0.10.0-debug.3](https://github.com/sashamilenkovic/h3-oauth-kit/compare/v0.10.0-debug.2...v0.10.0-debug.3) (2025-06-19)
+
+
+### Features
+
+* adds option to validate user after callback ([a2d8332](https://github.com/sashamilenkovic/h3-oauth-kit/commit/a2d83325fcd8e69f167232f1751d9215c3e3dab5))
+
 # [0.10.0-debug.2](https://github.com/sashamilenkovic/h3-oauth-kit/compare/v0.10.0-debug.1...v0.10.0-debug.2) (2025-06-19)
 
 
