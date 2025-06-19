@@ -1,3 +1,10 @@
+# [0.10.0-debug.7](https://github.com/sashamilenkovic/h3-oauth-kit/compare/v0.10.0-debug.6...v0.10.0-debug.7) (2025-06-19)
+
+
+### Features
+
+* removes requireLogin, changes name of validateUser to instanceEquivalent ([7f9afb6](https://github.com/sashamilenkovic/h3-oauth-kit/commit/7f9afb6807afcba6e7a3763a1aad9548e8b55846))
+
 # [0.10.0-debug.6](https://github.com/sashamilenkovic/h3-oauth-kit/compare/v0.10.0-debug.5...v0.10.0-debug.6) (2025-06-19)
 
 
