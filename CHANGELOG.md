@@ -1,3 +1,10 @@
+# [0.10.0-debug.6](https://github.com/sashamilenkovic/h3-oauth-kit/compare/v0.10.0-debug.5...v0.10.0-debug.6) (2025-06-19)
+
+
+### Features
+
+* adds option to require login for auth url ([1ed6601](https://github.com/sashamilenkovic/h3-oauth-kit/commit/1ed66011fbd1de23d8582b13869eeafde5c9f1ee))
+
 # [0.10.0-debug.5](https://github.com/sashamilenkovic/h3-oauth-kit/compare/v0.10.0-debug.4...v0.10.0-debug.5) (2025-06-19)
 
 
