@@ -1,3 +1,11 @@
+# [0.10.0-debug.1](https://github.com/sashamilenkovic/h3-oauth-kit/compare/v0.9.1-debug.2...v0.10.0-debug.1) (2025-06-19)
+
+
+### Features
+
+* adds more logs ([7880658](https://github.com/sashamilenkovic/h3-oauth-kit/commit/7880658f5be2e8ab40345b676e4505ed063868c8))
+* adds more logs ([4ee8984](https://github.com/sashamilenkovic/h3-oauth-kit/commit/4ee89845b54063cfd80ac3e25550ea219c5a7d00))
+
 ## [0.9.1-debug.2](https://github.com/sashamilenkovic/h3-oauth-kit/compare/v0.9.1-debug.1...v0.9.1-debug.2) (2025-06-19)
 
 
