@@ -287,6 +287,8 @@ export function handleOAuthLogin<P extends OAuthProvider>(
       ? getOAuthProviderConfig(provider, resolvedInstanceKey)
       : getOAuthProviderConfig(provider);
 
+    console.log('config in login', config);
+
     const providerKey = getProviderKey(
       provider,
       resolvedInstanceKey,
@@ -302,6 +304,8 @@ export function handleOAuthLogin<P extends OAuthProvider>(
       scopes: config.scopes,
       state,
     });
+
+    console.log('authUrl', authUrl);
 
     if (options?.redirect === true) {
       return sendRedirect(evt, authUrl, 302);
