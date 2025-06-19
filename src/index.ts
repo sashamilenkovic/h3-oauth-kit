@@ -414,7 +414,7 @@ export function handleOAuthCallback<P extends OAuthProvider>(
       console.log('evt', evt);
       const query = getQuery(evt);
 
-      console.log('query for callback', query);
+      console.log('query for callback', JSON.stringify(query));
 
       const { code, state } = query;
 
