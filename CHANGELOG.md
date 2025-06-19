@@ -1,3 +1,11 @@
+## [0.9.1-debug.1](https://github.com/sashamilenkovic/h3-oauth-kit/compare/v0.9.0...v0.9.1-debug.1) (2025-06-19)
+
+
+### Bug Fixes
+
+* fixes CI to release debug branch ([eb18faf](https://github.com/sashamilenkovic/h3-oauth-kit/commit/eb18fafb274e41697bba790d8f64757a25797c88))
+* trigger release ([e998fe2](https://github.com/sashamilenkovic/h3-oauth-kit/commit/e998fe22338a98bfb555e007bacf42a7cef25b3d))
+
 # [0.9.0](https://github.com/sashamilenkovic/h3-oauth-kit/compare/v0.8.0...v0.9.0) (2025-06-16)
 
 
