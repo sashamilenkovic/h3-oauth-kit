@@ -348,6 +348,11 @@ export function handleOAuthCallback<P extends OAuthProvider>(
       event: H3Event,
       provider: P,
     ) => Promise<unknown> | unknown;
+    validateUser?: (
+      rawTokens: OAuthProviderTokenMap[P],
+      event: H3Event,
+      provider: P,
+    ) => Promise<boolean> | boolean;
   },
   event: H3Event,
 ): Promise<{
@@ -368,6 +373,11 @@ export function handleOAuthCallback<P extends OAuthProvider>(
       event: H3Event,
       provider: P,
     ) => Promise<unknown> | unknown;
+    validateUser?: (
+      rawTokens: OAuthProviderTokenMap[P],
+      event: H3Event,
+      provider: P,
+    ) => Promise<boolean> | boolean;
   },
   event: H3Event,
 ): Promise<void>;
