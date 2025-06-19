@@ -1,3 +1,10 @@
+## [0.9.1-debug.2](https://github.com/sashamilenkovic/h3-oauth-kit/compare/v0.9.1-debug.1...v0.9.1-debug.2) (2025-06-19)
+
+
+### Bug Fixes
+
+* adds log ([c3e16d4](https://github.com/sashamilenkovic/h3-oauth-kit/commit/c3e16d411f63afd9ab2149f5319218159f9d4d5e))
+
 ## [0.9.1-debug.1](https://github.com/sashamilenkovic/h3-oauth-kit/compare/v0.9.0...v0.9.1-debug.1) (2025-06-19)
 
 
