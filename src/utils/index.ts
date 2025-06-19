@@ -19,6 +19,7 @@ import { setCookie, getCookie, deleteCookie, getQuery, createError } from 'h3';
 import { providerConfig } from '../providerConfig';
 import { ofetch } from 'ofetch';
 import { getOAuthProviderConfig } from '..';
+import { access } from 'fs';
 
 /**
  * @internal
@@ -658,18 +659,10 @@ export async function oAuthTokensAreValid<P extends OAuthProvider>(
   );
 
   if (!access_token || !refresh_token || !access_token_expires_at) {
-    console.log(
-      'missing tokens',
-      JSON.stringify(
-        {
-          access_token,
-          refresh_token,
-          access_token_expires_at,
-        },
-        null,
-        2,
-      ),
-    );
+    console.log('missing tokens');
+    console.log('access_token', access_token);
+    console.log('refresh_token', refresh_token);
+    console.log('access_token_expires_at', access_token_expires_at);
     return false;
   }
 
@@ -725,9 +718,8 @@ export async function oAuthTokensAreValid<P extends OAuthProvider>(
   );
 
   if (additionalFields === false) {
-    console.log('missing additional fields', {
-      additionalFields,
-    });
+    console.log('missing additional fields');
+    console.log('additionalFields', additionalFields);
     return false;
   }
 

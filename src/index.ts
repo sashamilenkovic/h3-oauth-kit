@@ -632,10 +632,14 @@ export function defineProtectedRoute<
 
         let providerKey = getProviderKey(provider, instanceKey);
         let result = await oAuthTokensAreValid(event, provider, instanceKey);
-        console.log('result', JSON.stringify(result));
+        console.log(
+          'first result of oauth tokens are valid',
+          JSON.stringify(result),
+        );
 
         // If no result and this is a string provider, try auto-discovery
         if (!result && !isScoped) {
+          console.log('no result and this is a string provider', provider);
           const discoveredInstanceKey = discoverProviderInstance(
             event,
             provider,
@@ -646,6 +650,10 @@ export function defineProtectedRoute<
             instanceKey = discoveredInstanceKey;
             providerKey = getProviderKey(provider, instanceKey);
             result = await oAuthTokensAreValid(event, provider, instanceKey);
+            console.log(
+              'second result of oauth tokens are valid',
+              JSON.stringify(result),
+            );
           }
         }
 
