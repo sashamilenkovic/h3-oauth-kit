@@ -295,11 +295,18 @@ async function oAuthTokensAreValid(event, provider, instanceKey) {
     `${providerKey}_access_token_expires_at`
   );
   if (!access_token || !refresh_token || !access_token_expires_at) {
-    console.log("missing tokens", {
-      access_token,
-      refresh_token,
-      access_token_expires_at
-    });
+    console.log(
+      "missing tokens",
+      JSON.stringify(
+        {
+          access_token,
+          refresh_token,
+          access_token_expires_at
+        },
+        null,
+        2
+      )
+    );
     return false;
   }
   const config = instanceKey ? getOAuthProviderConfig(provider, instanceKey) : getOAuthProviderConfig(provider);
@@ -589,6 +596,7 @@ function handleOAuthLogin(provider, instanceKey, optionsOrEvent, maybeEvent) {
   const event = isScoped ? maybeEvent : optionsOrEvent;
   const handler = async (evt) => {
     const config = resolvedInstanceKey ? getOAuthProviderConfig(provider, resolvedInstanceKey) : getOAuthProviderConfig(provider);
+    console.log("config in login", config);
     const providerKey = getProviderKey(
       provider,
       resolvedInstanceKey,
@@ -602,6 +610,7 @@ function handleOAuthLogin(provider, instanceKey, optionsOrEvent, maybeEvent) {
       scopes: config.scopes,
       state
     });
+    console.log("authUrl", authUrl);
     if (options?.redirect === true) {
       return sendRedirect(evt, authUrl, 302);
     }
@@ -612,7 +621,9 @@ function handleOAuthLogin(provider, instanceKey, optionsOrEvent, maybeEvent) {
 function handleOAuthCallback(provider, options, event) {
   const handler = async (evt) => {
     try {
+      console.log("evt", evt);
       const query = getQuery(evt);
+      console.log("query for callback", JSON.stringify(query));
       const { code, state } = query;
       if (!code || typeof code !== "string") {
         throw createError({
@@ -627,6 +638,7 @@ function handleOAuthCallback(provider, options, event) {
         });
       }
       const parsedState = parseOAuthState(state);
+      console.log("parsedState", JSON.stringify(parsedState));
       verifyStateParam(evt, parsedState);
       const {
         provider: _baseProvider,
@@ -635,6 +647,16 @@ function handleOAuthCallback(provider, options, event) {
       } = parseProviderKey(parsedState.providerKey);
       const config = instanceKey ? getOAuthProviderConfig(provider, instanceKey) : getOAuthProviderConfig(provider);
       const rawTokens = await exchangeCodeForTokens(code, config, provider);
+      console.log("rawTokens", JSON.stringify(rawTokens));
+      if (options?.validateUser) {
+        const isValid = await options.validateUser(rawTokens, evt, provider);
+        if (!isValid) {
+          throw createError({
+            statusCode: 401,
+            statusMessage: "User validation failed after OAuth callback"
+          });
+        }
+      }
       if (!preserveInstance) {
         clearNonPreservedCookies(evt, provider);
       }
@@ -701,7 +723,6 @@ function defineProtectedRoute(providers, handler, options) {
             provider
           );
           console.log("discoveredInstanceKey", discoveredInstanceKey);
-          console.log("not scoped");
           console.log("provider", provider);
           if (discoveredInstanceKey) {
             instanceKey = discoveredInstanceKey;
@@ -710,6 +731,7 @@ function defineProtectedRoute(providers, handler, options) {
           }
         }
         if (!result) {
+          console.log("no valid tokens");
           const error = createError({
             statusCode: 401,
             message: `Missing or invalid tokens for "${providerKey}"`

@@ -384,6 +384,11 @@ export function handleOAuthCallback<P extends OAuthProvider>(
       event: H3Event,
       provider: P,
     ) => Promise<unknown> | unknown;
+    validateUser?: (
+      rawTokens: OAuthProviderTokenMap[P],
+      event: H3Event,
+      provider: P,
+    ) => Promise<boolean> | boolean;
   },
   event?: undefined,
 ): EventHandler;
@@ -399,6 +404,11 @@ export function handleOAuthCallback<P extends OAuthProvider>(
       event: H3Event,
       provider: P,
     ) => Promise<unknown> | unknown;
+    validateUser?: (
+      rawTokens: OAuthProviderTokenMap[P],
+      event: H3Event,
+      provider: P,
+    ) => Promise<boolean> | boolean;
   },
   event?: H3Event,
 ):
@@ -434,6 +444,8 @@ export function handleOAuthCallback<P extends OAuthProvider>(
 
       const parsedState = parseOAuthState(state);
 
+      console.log('parsedState', JSON.stringify(parsedState));
+
       verifyStateParam(evt, parsedState);
 
       // Parse the provider key to extract preserveInstance flag
@@ -448,6 +460,19 @@ export function handleOAuthCallback<P extends OAuthProvider>(
         : getOAuthProviderConfig(provider);
 
       const rawTokens = await exchangeCodeForTokens(code, config, provider);
+
+      console.log('rawTokens', JSON.stringify(rawTokens));
+
+      // Add user validation step
+      if (options?.validateUser) {
+        const isValid = await options.validateUser(rawTokens, evt, provider);
+        if (!isValid) {
+          throw createError({
+            statusCode: 401,
+            statusMessage: 'User validation failed after OAuth callback',
+          });
+        }
+      }
 
       // Clear non-preserved cookies if not in preserve mode
       if (!preserveInstance) {

@@ -15,6 +15,7 @@ export interface BaseOAuthProviderConfig {
   scopes: string[];
   encrypt: (text: string) => Promise<string>;
   decrypt: (encryptedText: string) => Promise<string>;
+  meEndpoint?: string;
 }
 
 export type OAuthProviderConfig =
