@@ -307,6 +307,7 @@ export function buildAuthUrl({
   url.searchParams.set('response_type', 'code');
   url.searchParams.set('scope', scopes.join(' '));
   url.searchParams.set('state', state);
+  url.searchParams.set('prompt', 'login');
   return url.toString();
 }
 

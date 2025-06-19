@@ -407,7 +407,10 @@ export function handleOAuthCallback<P extends OAuthProvider>(
   | Promise<void> {
   const handler = async (evt: H3Event) => {
     try {
+      console.log('evt', evt);
       const query = getQuery(evt);
+
+      console.log('query for callback', query);
 
       const { code, state } = query;
 
