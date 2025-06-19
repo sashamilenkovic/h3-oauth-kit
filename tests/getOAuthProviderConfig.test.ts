@@ -1,5 +1,3 @@
-import type { OAuthProviderConfigMap } from '../src/types';
-
 import { describe, it, expect, beforeEach } from 'vitest';
 import { getOAuthProviderConfig, useOAuthRegistry } from '../src';
 

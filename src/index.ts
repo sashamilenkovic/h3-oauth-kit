@@ -303,6 +303,7 @@ export function handleOAuthLogin<P extends OAuthProvider>(
       redirectUri: config.redirectUri,
       scopes: config.scopes,
       state,
+      requireLogin: options?.requireLogin ?? false,
     });
 
     console.log('authUrl', authUrl);

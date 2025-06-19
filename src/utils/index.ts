@@ -294,12 +294,14 @@ export function buildAuthUrl({
   redirectUri,
   scopes,
   state,
+  requireLogin,
 }: {
   authorizeEndpoint: string;
   clientId: string;
   redirectUri: string;
   scopes: string[];
   state: string;
+  requireLogin?: boolean;
 }): string {
   const url = new URL(authorizeEndpoint);
   url.searchParams.set('client_id', clientId);
@@ -307,6 +309,9 @@ export function buildAuthUrl({
   url.searchParams.set('response_type', 'code');
   url.searchParams.set('scope', scopes.join(' '));
   url.searchParams.set('state', state);
+  if (requireLogin) {
+    url.searchParams.set('prompt', 'login');
+  }
   return url.toString();
 }
 

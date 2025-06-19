@@ -1,11 +1,5 @@
-import type { OAuthProviderConfigMap } from '../src/types';
-
 import { describe, it, expect, beforeEach } from 'vitest';
-import {
-  getOAuthProviderConfig,
-  useOAuthRegistry,
-  hasOAuthProviderConfig,
-} from '../src';
+import { useOAuthRegistry, hasOAuthProviderConfig } from '../src';
 
 describe('hasOAuthProviderConfig', () => {
   const { registerOAuthProvider } = useOAuthRegistry('a'.repeat(64));
