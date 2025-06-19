@@ -1,3 +1,10 @@
+# [0.10.0-debug.4](https://github.com/sashamilenkovic/h3-oauth-kit/compare/v0.10.0-debug.3...v0.10.0-debug.4) (2025-06-19)
+
+
+### Bug Fixes
+
+* adds validateUser option to utility usage as well ([cde39c6](https://github.com/sashamilenkovic/h3-oauth-kit/commit/cde39c6108ea5b6e999f9c2f92de234818318111))
+
 # [0.10.0-debug.3](https://github.com/sashamilenkovic/h3-oauth-kit/compare/v0.10.0-debug.2...v0.10.0-debug.3) (2025-06-19)
 
 
