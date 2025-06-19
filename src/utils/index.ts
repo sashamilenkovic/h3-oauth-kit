@@ -653,11 +653,18 @@ export async function oAuthTokensAreValid<P extends OAuthProvider>(
   );
 
   if (!access_token || !refresh_token || !access_token_expires_at) {
-    console.log('missing tokens', {
-      access_token,
-      refresh_token,
-      access_token_expires_at,
-    });
+    console.log(
+      'missing tokens',
+      JSON.stringify(
+        {
+          access_token,
+          refresh_token,
+          access_token_expires_at,
+        },
+        null,
+        2,
+      ),
+    );
     return false;
   }
 

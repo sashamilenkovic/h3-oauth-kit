@@ -598,6 +598,7 @@ export function defineProtectedRoute<
         }
 
         if (!result) {
+          console.log('no valid tokens');
           const error = createError({
             statusCode: 401,
             message: `Missing or invalid tokens for "${providerKey}"`,
