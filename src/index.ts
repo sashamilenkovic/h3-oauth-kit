@@ -352,6 +352,7 @@ export function handleOAuthCallback<P extends OAuthProvider>(
       rawTokens: OAuthProviderTokenMap[P],
       event: H3Event,
       provider: P,
+      instanceKey?: string,
     ) => Promise<boolean> | boolean;
   },
   event: H3Event,
@@ -377,6 +378,7 @@ export function handleOAuthCallback<P extends OAuthProvider>(
       rawTokens: OAuthProviderTokenMap[P],
       event: H3Event,
       provider: P,
+      instanceKey?: string,
     ) => Promise<boolean> | boolean;
   },
   event: H3Event,
@@ -398,6 +400,7 @@ export function handleOAuthCallback<P extends OAuthProvider>(
       rawTokens: OAuthProviderTokenMap[P],
       event: H3Event,
       provider: P,
+      instanceKey?: string,
     ) => Promise<boolean> | boolean;
   },
   event?: undefined,
@@ -418,6 +421,7 @@ export function handleOAuthCallback<P extends OAuthProvider>(
       rawTokens: OAuthProviderTokenMap[P],
       event: H3Event,
       provider: P,
+      instanceKey?: string,
     ) => Promise<boolean> | boolean;
   },
   event?: H3Event,
@@ -475,7 +479,13 @@ export function handleOAuthCallback<P extends OAuthProvider>(
 
       // Add user validation step
       if (options?.validateUser) {
-        const isValid = await options.validateUser(rawTokens, evt, provider);
+        const isValid = await options.validateUser(
+          rawTokens,
+          evt,
+          provider,
+          instanceKey,
+        );
+
         if (!isValid) {
           throw createError({
             statusCode: 401,
