@@ -1,3 +1,10 @@
+# [0.10.0-debug.5](https://github.com/sashamilenkovic/h3-oauth-kit/compare/v0.10.0-debug.4...v0.10.0-debug.5) (2025-06-19)
+
+
+### Features
+
+* adds instancekey as optional argument to validateUser option ([83e1c39](https://github.com/sashamilenkovic/h3-oauth-kit/commit/83e1c39e703a1b0cfa502e58c5971d9d87c281ff))
+
 # [0.10.0-debug.4](https://github.com/sashamilenkovic/h3-oauth-kit/compare/v0.10.0-debug.3...v0.10.0-debug.4) (2025-06-19)
 
 
