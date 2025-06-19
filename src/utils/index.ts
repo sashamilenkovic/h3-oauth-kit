@@ -652,13 +652,20 @@ export async function oAuthTokensAreValid<P extends OAuthProvider>(
     `${providerKey}_access_token_expires_at`,
   );
 
-  if (!access_token || !refresh_token || !access_token_expires_at) return false;
+  if (!access_token || !refresh_token || !access_token_expires_at) {
+    console.log('missing tokens', {
+      access_token,
+      refresh_token,
+      access_token_expires_at,
+    });
+    return false;
+  }
 
   const config = instanceKey
     ? getOAuthProviderConfig(provider, instanceKey)
     : getOAuthProviderConfig(provider);
 
-  const encryptedRefreshToken = await config.decrypt(refresh_token);
+  const decryptedRefreshToken = await config.decrypt(refresh_token);
 
   const expires_in = parseInt(access_token_expires_at, 10);
 
@@ -668,7 +675,7 @@ export async function oAuthTokensAreValid<P extends OAuthProvider>(
 
   const base = {
     access_token,
-    refresh_token: encryptedRefreshToken,
+    refresh_token: decryptedRefreshToken,
     expires_in,
   };
 
@@ -679,7 +686,12 @@ export async function oAuthTokensAreValid<P extends OAuthProvider>(
       `${providerKey}_refresh_token_expires_at`,
     );
 
-    if (!refreshExpiresAt) return false;
+    if (!refreshExpiresAt) {
+      console.log('missing refresh token expires at', {
+        refreshExpiresAt,
+      });
+      return false;
+    }
 
     const refreshExpiry = parseInt(refreshExpiresAt, 10);
 
@@ -700,12 +712,22 @@ export async function oAuthTokensAreValid<P extends OAuthProvider>(
     providerKey,
   );
 
-  if (additionalFields === false) return false;
+  if (additionalFields === false) {
+    console.log('missing additional fields', {
+      additionalFields,
+    });
+    return false;
+  }
 
   const tokens = {
     ...base,
     ...additionalFields,
   } as OAuthProviderTokenMap[P];
+
+  console.log('tokens', {
+    tokens,
+    isAccessTokenExpired,
+  });
 
   return {
     tokens,

@@ -580,6 +580,7 @@ export function defineProtectedRoute<
 
         let providerKey = getProviderKey(provider, instanceKey);
         let result = await oAuthTokensAreValid(event, provider, instanceKey);
+        console.log('result', result);
 
         // If no result and this is a string provider, try auto-discovery
         if (!result && !isScoped) {
@@ -587,6 +588,9 @@ export function defineProtectedRoute<
             event,
             provider,
           );
+          console.log('discoveredInstanceKey', discoveredInstanceKey);
+          console.log('not scoped');
+          console.log('provider', provider);
           if (discoveredInstanceKey) {
             instanceKey = discoveredInstanceKey;
             providerKey = getProviderKey(provider, instanceKey);
@@ -607,6 +611,7 @@ export function defineProtectedRoute<
               'missing-or-invalid-tokens',
               error,
             );
+
             if (response !== undefined) return response;
           }
 

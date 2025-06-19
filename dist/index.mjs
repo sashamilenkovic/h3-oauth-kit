@@ -294,15 +294,22 @@ async function oAuthTokensAreValid(event, provider, instanceKey) {
     event,
     `${providerKey}_access_token_expires_at`
   );
-  if (!access_token || !refresh_token || !access_token_expires_at) return false;
+  if (!access_token || !refresh_token || !access_token_expires_at) {
+    console.log("missing tokens", {
+      access_token,
+      refresh_token,
+      access_token_expires_at
+    });
+    return false;
+  }
   const config = instanceKey ? getOAuthProviderConfig(provider, instanceKey) : getOAuthProviderConfig(provider);
-  const encryptedRefreshToken = await config.decrypt(refresh_token);
+  const decryptedRefreshToken = await config.decrypt(refresh_token);
   const expires_in = parseInt(access_token_expires_at, 10);
   const now = Math.floor(Date.now() / 1e3);
   const isAccessTokenExpired = now >= expires_in;
   const base = {
     access_token,
-    refresh_token: encryptedRefreshToken,
+    refresh_token: decryptedRefreshToken,
     expires_in
   };
   if (providerConfig[provider].validateRefreshTokenExpiry) {
@@ -310,7 +317,12 @@ async function oAuthTokensAreValid(event, provider, instanceKey) {
       event,
       `${providerKey}_refresh_token_expires_at`
     );
-    if (!refreshExpiresAt) return false;
+    if (!refreshExpiresAt) {
+      console.log("missing refresh token expires at", {
+        refreshExpiresAt
+      });
+      return false;
+    }
     const refreshExpiry = parseInt(refreshExpiresAt, 10);
     if (isNaN(refreshExpiry) || now >= refreshExpiry) {
       return {
@@ -327,11 +339,20 @@ async function oAuthTokensAreValid(event, provider, instanceKey) {
     provider,
     providerKey
   );
-  if (additionalFields === false) return false;
+  if (additionalFields === false) {
+    console.log("missing additional fields", {
+      additionalFields
+    });
+    return false;
+  }
   const tokens = {
     ...base,
     ...additionalFields
   };
+  console.log("tokens", {
+    tokens,
+    isAccessTokenExpired
+  });
   return {
     tokens,
     status: isAccessTokenExpired ? "expired" : "valid"
@@ -673,11 +694,15 @@ function defineProtectedRoute(providers, handler, options) {
         }
         let providerKey = getProviderKey(provider, instanceKey);
         let result = await oAuthTokensAreValid(event, provider, instanceKey);
+        console.log("result", result);
         if (!result && !isScoped) {
           const discoveredInstanceKey = discoverProviderInstance(
             event,
             provider
           );
+          console.log("discoveredInstanceKey", discoveredInstanceKey);
+          console.log("not scoped");
+          console.log("provider", provider);
           if (discoveredInstanceKey) {
             instanceKey = discoveredInstanceKey;
             providerKey = getProviderKey(provider, instanceKey);
