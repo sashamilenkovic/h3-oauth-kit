@@ -589,7 +589,6 @@ export function defineProtectedRoute<
             provider,
           );
           console.log('discoveredInstanceKey', discoveredInstanceKey);
-          console.log('not scoped');
           console.log('provider', provider);
           if (discoveredInstanceKey) {
             instanceKey = discoveredInstanceKey;
