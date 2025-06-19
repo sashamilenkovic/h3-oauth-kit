@@ -602,10 +602,14 @@ export async function refreshToken<P extends OAuthProvider>(
       },
     );
 
+    console.log('refreshToken success', JSON.stringify(tokenResponse));
+
     // Cast back to token response — optional string coercion step removed
     return tokenResponse;
   } catch (error: unknown) {
     const { statusCode, message } = await parseError(error);
+
+    console.log('refreshToken error', JSON.stringify({ statusCode, message }));
 
     throw createError({ statusCode, message });
   }
@@ -732,10 +736,17 @@ export async function oAuthTokensAreValid<P extends OAuthProvider>(
     ...additionalFields,
   } as OAuthProviderTokenMap[P];
 
-  console.log('tokens', {
-    tokens,
-    isAccessTokenExpired,
-  });
+  console.log(
+    'tokens',
+    JSON.stringify(
+      {
+        tokens,
+        isAccessTokenExpired,
+      },
+      null,
+      2,
+    ),
+  );
 
   return {
     tokens,

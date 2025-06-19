@@ -632,7 +632,7 @@ export function defineProtectedRoute<
 
         let providerKey = getProviderKey(provider, instanceKey);
         let result = await oAuthTokensAreValid(event, provider, instanceKey);
-        console.log('result', result);
+        console.log('result', JSON.stringify(result));
 
         // If no result and this is a string provider, try auto-discovery
         if (!result && !isScoped) {
@@ -650,7 +650,7 @@ export function defineProtectedRoute<
         }
 
         if (!result) {
-          console.log('no valid tokens');
+          console.log('no valid tokens', JSON.stringify(result));
           const error = createError({
             statusCode: 401,
             message: `Missing or invalid tokens for "${providerKey}"`,
