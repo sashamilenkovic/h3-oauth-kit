@@ -59,19 +59,19 @@ export async function setProviderCookies<P extends OAuthProvider>(
     path: options?.path ?? '/',
   };
 
-  // --- DEBUG: Force 5-minute expiry for intuit ---
+  // --- DEBUG: Force 5-minute expiry for intuit, azure, clio ---
   let expiresIn = tokens.expires_in;
-  if (provider === 'intuit') {
+  if (provider === 'intuit' || provider === 'azure' || provider === 'clio') {
     console.log(
-      '[DEBUG][setProviderCookies] Forcing expires_in to 300 seconds for intuit',
+      `[DEBUG][setProviderCookies] Forcing expires_in to 300 seconds for ${provider}`,
     );
     expiresIn = 300;
     console.log(
-      '[DEBUG][setProviderCookies] Original tokens:',
+      `[DEBUG][setProviderCookies] Original tokens for ${provider}:`,
       JSON.stringify(tokens),
     );
   }
-  // -----------------------------------------------
+  // -----------------------------------------------------------
 
   const cleanedAccessToken = tokens.access_token.startsWith('Bearer ')
     ? tokens.access_token.slice(7)
@@ -672,7 +672,7 @@ export async function oAuthTokensAreValid<P extends OAuthProvider>(
     `${providerKey}_access_token_expires_at`,
   );
 
-  if (provider === 'intuit') {
+  if (provider === 'intuit' || provider === 'azure' || provider === 'clio') {
     console.log(
       `[DEBUG][oAuthTokensAreValid] Checking tokens for provider: ${provider}, instanceKey: ${instanceKey}`,
     );
@@ -685,8 +685,10 @@ export async function oAuthTokensAreValid<P extends OAuthProvider>(
   }
 
   if (!access_token || !refresh_token || !access_token_expires_at) {
-    if (provider === 'intuit') {
-      console.log('[DEBUG][oAuthTokensAreValid] missing tokens');
+    if (provider === 'intuit' || provider === 'azure' || provider === 'clio') {
+      console.log(
+        `[DEBUG][oAuthTokensAreValid] missing tokens for ${provider}`,
+      );
     }
     return false;
   }
@@ -703,9 +705,9 @@ export async function oAuthTokensAreValid<P extends OAuthProvider>(
 
   const isAccessTokenExpired = now >= expires_in;
 
-  if (provider === 'intuit') {
+  if (provider === 'intuit' || provider === 'azure' || provider === 'clio') {
     console.log(
-      `[DEBUG][oAuthTokensAreValid] Current time: ${now}, Expires at: ${expires_in}, Expired: ${isAccessTokenExpired}`,
+      `[DEBUG][oAuthTokensAreValid] Current time: ${now}, Expires at: ${expires_in}, Expired: ${isAccessTokenExpired} for ${provider}`,
     );
   }
 
@@ -723,9 +725,13 @@ export async function oAuthTokensAreValid<P extends OAuthProvider>(
     );
 
     if (!refreshExpiresAt) {
-      if (provider === 'intuit') {
+      if (
+        provider === 'intuit' ||
+        provider === 'azure' ||
+        provider === 'clio'
+      ) {
         console.log(
-          '[DEBUG][oAuthTokensAreValid] missing refresh token expires at',
+          `[DEBUG][oAuthTokensAreValid] missing refresh token expires at for ${provider}`,
           {
             refreshExpiresAt,
           },
@@ -737,9 +743,13 @@ export async function oAuthTokensAreValid<P extends OAuthProvider>(
     const refreshExpiry = parseInt(refreshExpiresAt, 10);
 
     if (isNaN(refreshExpiry) || now >= refreshExpiry) {
-      if (provider === 'intuit') {
+      if (
+        provider === 'intuit' ||
+        provider === 'azure' ||
+        provider === 'clio'
+      ) {
         console.log(
-          '[DEBUG][oAuthTokensAreValid] refresh token expired or invalid',
+          `[DEBUG][oAuthTokensAreValid] refresh token expired or invalid for ${provider}`,
           { refreshExpiry, now },
         );
       }
@@ -760,8 +770,10 @@ export async function oAuthTokensAreValid<P extends OAuthProvider>(
   );
 
   if (additionalFields === false) {
-    if (provider === 'intuit') {
-      console.log('[DEBUG][oAuthTokensAreValid] missing additional fields');
+    if (provider === 'intuit' || provider === 'azure' || provider === 'clio') {
+      console.log(
+        `[DEBUG][oAuthTokensAreValid] missing additional fields for ${provider}`,
+      );
     }
     return false;
   }
@@ -771,9 +783,9 @@ export async function oAuthTokensAreValid<P extends OAuthProvider>(
     ...additionalFields,
   } as OAuthProviderTokenMap[P];
 
-  if (provider === 'intuit') {
+  if (provider === 'intuit' || provider === 'azure' || provider === 'clio') {
     console.log(
-      '[DEBUG][oAuthTokensAreValid] Final tokens object:',
+      `[DEBUG][oAuthTokensAreValid] Final tokens object for ${provider}:`,
       JSON.stringify(tokens),
     );
   }
