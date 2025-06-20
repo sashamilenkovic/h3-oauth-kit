@@ -1,3 +1,10 @@
+# [0.10.0-debug.21](https://github.com/sashamilenkovic/h3-oauth-kit/compare/v0.10.0-debug.20...v0.10.0-debug.21) (2025-06-20)
+
+
+### Features
+
+* sets expiresIn back to 60 for testing ([32a8b94](https://github.com/sashamilenkovic/h3-oauth-kit/commit/32a8b9432c64e9449f6b65fb0629206a77783205))
+
 # [0.10.0-debug.20](https://github.com/sashamilenkovic/h3-oauth-kit/compare/v0.10.0-debug.19...v0.10.0-debug.20) (2025-06-20)
 
 
