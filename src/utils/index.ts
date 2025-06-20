@@ -85,17 +85,14 @@ export async function setProviderCookies<P extends OAuthProvider>(
   if (tokens.refresh_token) {
     const encryptedRefreshToken = await config.encrypt(tokens.refresh_token);
 
-    // --- Determine refresh token maxAge ---
     let refreshTokenMaxAge = 30 * 24 * 60 * 60; // Default: 30 days
-    // 1. If providerConfig.validateRefreshTokenExpiry is true and tokens.x_refresh_token_expires_in is a number, use it
+
     if (
       providerConfig[provider].validateRefreshTokenExpiry &&
       hasXRefreshTokenExpiresIn(tokens)
     ) {
       refreshTokenMaxAge = tokens.x_refresh_token_expires_in;
-    }
-    // 2. User config override
-    else if (options?.refreshTokenMaxAge) {
+    } else if (options?.refreshTokenMaxAge) {
       refreshTokenMaxAge = options.refreshTokenMaxAge;
     }
 
