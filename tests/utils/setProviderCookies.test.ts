@@ -63,9 +63,7 @@ const cases = [
 ];
 
 let clioConfig: ReturnType<typeof getOAuthProviderConfig>;
-let azureConfig: ReturnType<typeof getOAuthProviderConfig>;
 let smithlawConfig: ReturnType<typeof getOAuthProviderConfig>;
-let azureDevConfig: ReturnType<typeof getOAuthProviderConfig>;
 
 describe('setProviderCookies', () => {
   const originalClioFields = [...providerConfig.clio.providerSpecificFields];
@@ -146,8 +144,6 @@ describe('setProviderCookies', () => {
     });
 
     clioConfig = getOAuthProviderConfig('clio');
-    azureConfig = getOAuthProviderConfig('azure');
-    azureDevConfig = getOAuthProviderConfig('azure', 'dev');
     smithlawConfig = getOAuthProviderConfig('clio', 'smithlaw');
   });
 
