@@ -1,3 +1,10 @@
+# [0.10.0-debug.15](https://github.com/sashamilenkovic/h3-oauth-kit/compare/v0.10.0-debug.14...v0.10.0-debug.15) (2025-06-20)
+
+
+### Bug Fixes
+
+* access token missing returned false for validity of tokens themselves, should have been attempting refresh ([a9177a8](https://github.com/sashamilenkovic/h3-oauth-kit/commit/a9177a88d71fcab939ee8331c27959a1a6619bf7))
+
 # [0.10.0-debug.14](https://github.com/sashamilenkovic/h3-oauth-kit/compare/v0.10.0-debug.13...v0.10.0-debug.14) (2025-06-20)
 
 
