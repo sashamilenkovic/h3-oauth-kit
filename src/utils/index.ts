@@ -599,6 +599,7 @@ export async function refreshToken<P extends OAuthProvider>(
   const requestConfig = {
     url: providerConfig.tokenEndpoint,
     params: {
+      client_id: providerConfig.clientId,
       client_secret: providerConfig.clientSecret,
       refresh_token: refreshTokenValue,
       grant_type: 'refresh_token',
