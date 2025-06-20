@@ -1,3 +1,10 @@
+# [0.10.0-debug.17](https://github.com/sashamilenkovic/h3-oauth-kit/compare/v0.10.0-debug.16...v0.10.0-debug.17) (2025-06-20)
+
+
+### Features
+
+* adds client id to refresh token request ([86c68c3](https://github.com/sashamilenkovic/h3-oauth-kit/commit/86c68c3a6fa6a209460f927dcb7a943520e39df1))
+
 # [0.10.0-debug.16](https://github.com/sashamilenkovic/h3-oauth-kit/compare/v0.10.0-debug.15...v0.10.0-debug.16) (2025-06-20)
 
 
