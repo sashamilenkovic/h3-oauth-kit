@@ -663,6 +663,8 @@ export async function oAuthTokensAreValid<P extends OAuthProvider>(
 ): Promise<TokenValidationResult<P> | false> {
   const providerKey = getProviderKey(provider, instanceKey);
 
+  console.log('provider key in oauth tokens are valid', providerKey);
+
   const access_token = getCookie(event, `${providerKey}_access_token`);
 
   const refresh_token = getCookie(event, `${providerKey}_refresh_token`);
