@@ -1,3 +1,10 @@
+# [0.10.0-debug.16](https://github.com/sashamilenkovic/h3-oauth-kit/compare/v0.10.0-debug.15...v0.10.0-debug.16) (2025-06-20)
+
+
+### Features
+
+* sets expiration to 60 seconds in advance ([bbc0945](https://github.com/sashamilenkovic/h3-oauth-kit/commit/bbc09453846f188b5a03d37545366d7c9cdeb59e))
+
 # [0.10.0-debug.15](https://github.com/sashamilenkovic/h3-oauth-kit/compare/v0.10.0-debug.14...v0.10.0-debug.15) (2025-06-20)
 
 
