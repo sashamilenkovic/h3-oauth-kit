@@ -1,3 +1,10 @@
+## [0.9.1](https://github.com/sashamilenkovic/h3-oauth-kit/compare/v0.9.0...v0.9.1) (2025-06-20)
+
+
+### Bug Fixes
+
+* refresh flow bug where lack of access token prevented it ([e849f7e](https://github.com/sashamilenkovic/h3-oauth-kit/commit/e849f7e675e770ad9d87916946c15d9b207a6bf5))
+
 # [0.9.0](https://github.com/sashamilenkovic/h3-oauth-kit/compare/v0.8.0...v0.9.0) (2025-06-16)
 
 
