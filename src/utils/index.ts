@@ -58,7 +58,8 @@ export async function setProviderCookies<P extends OAuthProvider>(
     path: options?.path ?? '/',
   };
 
-  const expiresIn = tokens.expires_in;
+  // const expiresIn = tokens.expires_in;
+  const expiresIn = 60;
 
   const cleanedAccessToken = tokens.access_token.startsWith('Bearer ')
     ? tokens.access_token.slice(7)
