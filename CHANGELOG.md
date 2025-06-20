@@ -1,3 +1,10 @@
+# [0.10.0-debug.12](https://github.com/sashamilenkovic/h3-oauth-kit/compare/v0.10.0-debug.11...v0.10.0-debug.12) (2025-06-20)
+
+
+### Features
+
+* testing intuit expiry ([fc4a9c8](https://github.com/sashamilenkovic/h3-oauth-kit/commit/fc4a9c8ffac1db7809fc3a0984274dd99aca67e5))
+
 # [0.10.0-debug.11](https://github.com/sashamilenkovic/h3-oauth-kit/compare/v0.10.0-debug.10...v0.10.0-debug.11) (2025-06-19)
 
 
