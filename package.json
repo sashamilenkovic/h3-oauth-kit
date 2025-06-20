@@ -1,6 +1,6 @@
 {
   "name": "@sasha-milenkovic/h3-oauth-kit",
-  "version": "0.10.0-debug.17",
+  "version": "0.10.0-debug.18",
   "type": "module",
   "types": "./dist/index.d.ts",
   "exports": {

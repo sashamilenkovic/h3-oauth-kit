@@ -1,3 +1,10 @@
+# [0.10.0-debug.18](https://github.com/sashamilenkovic/h3-oauth-kit/compare/v0.10.0-debug.17...v0.10.0-debug.18) (2025-06-20)
+
+
+### Features
+
+* adds refresh token max age config, defaults to either provider given or 30 days ([da2f466](https://github.com/sashamilenkovic/h3-oauth-kit/commit/da2f46629e2d0c559d7d94d94f7437a8f43d2b37))
+
 # [0.10.0-debug.17](https://github.com/sashamilenkovic/h3-oauth-kit/compare/v0.10.0-debug.16...v0.10.0-debug.17) (2025-06-20)
 
 
