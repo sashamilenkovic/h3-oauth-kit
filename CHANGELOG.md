@@ -1,3 +1,10 @@
+# [0.10.0-debug.14](https://github.com/sashamilenkovic/h3-oauth-kit/compare/v0.10.0-debug.13...v0.10.0-debug.14) (2025-06-20)
+
+
+### Features
+
+* adds log for provider key in oauth tokens are valid ([9a21f57](https://github.com/sashamilenkovic/h3-oauth-kit/commit/9a21f575aed297977ec906aa02ebee80017003c6))
+
 # [0.10.0-debug.13](https://github.com/sashamilenkovic/h3-oauth-kit/compare/v0.10.0-debug.12...v0.10.0-debug.13) (2025-06-20)
 
 
