@@ -287,8 +287,6 @@ export function handleOAuthLogin<P extends OAuthProvider>(
       ? getOAuthProviderConfig(provider, resolvedInstanceKey)
       : getOAuthProviderConfig(provider);
 
-    console.log('config in login', config);
-
     const providerKey = getProviderKey(
       provider,
       resolvedInstanceKey,
@@ -304,8 +302,6 @@ export function handleOAuthLogin<P extends OAuthProvider>(
       scopes: config.scopes,
       state,
     });
-
-    console.log('authUrl', authUrl);
 
     if (options?.redirect === true) {
       return sendRedirect(evt, authUrl, 302);
@@ -435,10 +431,7 @@ export function handleOAuthCallback<P extends OAuthProvider>(
   | Promise<void> {
   const handler = async (evt: H3Event) => {
     try {
-      console.log('evt', evt);
       const query = getQuery(evt);
-
-      console.log('query for callback', JSON.stringify(query));
 
       const { code, state } = query;
 
@@ -458,8 +451,6 @@ export function handleOAuthCallback<P extends OAuthProvider>(
 
       const parsedState = parseOAuthState(state);
 
-      console.log('parsedState', JSON.stringify(parsedState));
-
       verifyStateParam(evt, parsedState);
 
       // Parse the provider key to extract preserveInstance flag
@@ -474,8 +465,6 @@ export function handleOAuthCallback<P extends OAuthProvider>(
         : getOAuthProviderConfig(provider);
 
       const rawTokens = await exchangeCodeForTokens(code, config, provider);
-
-      console.log('rawTokens', JSON.stringify(rawTokens));
 
       // Add user validation step
       if (options?.instanceEquivalent) {
@@ -610,7 +599,6 @@ export function defineProtectedRoute<
   ) => Promise<unknown>,
   options?: ProtectedRouteOptions<InstanceKeys>,
 ): EventHandler {
-  console.log('defineProtectedRoute entry', providers);
   return defineEventHandler(async (event): Promise<unknown> => {
     const ctx = event.context as AugmentedContext<Defs, InstanceKeys>;
 
@@ -619,9 +607,6 @@ export function defineProtectedRoute<
     for (const def of providers) {
       const isScoped = typeof def !== 'string';
       const provider = isScoped ? def.provider : def;
-
-      console.log('def', JSON.stringify(def));
-      console.log('provider', provider);
 
       try {
         // Resolve instanceKey: use explicit instanceKey or instanceResolver
@@ -634,35 +619,23 @@ export function defineProtectedRoute<
           }
         }
 
-        console.log('instanceKey', instanceKey);
         let providerKey = getProviderKey(provider, instanceKey);
         let result = await oAuthTokensAreValid(event, provider, instanceKey);
-        console.log(
-          'first result of oauth tokens are valid',
-          JSON.stringify(result),
-        );
 
         // If no result and this is a string provider, try auto-discovery
         if (!result && !isScoped) {
-          console.log('no result and this is a string provider', provider);
           const discoveredInstanceKey = discoverProviderInstance(
             event,
             provider,
           );
-          console.log('discoveredInstanceKey', discoveredInstanceKey);
           if (discoveredInstanceKey) {
             instanceKey = discoveredInstanceKey;
             providerKey = getProviderKey(provider, instanceKey);
             result = await oAuthTokensAreValid(event, provider, instanceKey);
-            console.log(
-              'second result of oauth tokens are valid',
-              JSON.stringify(result),
-            );
           }
         }
 
         if (!result) {
-          console.log('no valid tokens', JSON.stringify(result));
           const error = createError({
             statusCode: 401,
             message: `Missing or invalid tokens for "${providerKey}"`,
@@ -685,7 +658,6 @@ export function defineProtectedRoute<
         let tokens = result.tokens;
 
         if (result.status === 'expired') {
-          console.log('result is expired', JSON.stringify(tokens));
           const config = instanceKey
             ? getOAuthProviderConfig(provider, instanceKey)
             : getOAuthProviderConfig(provider);
@@ -695,8 +667,6 @@ export function defineProtectedRoute<
             config,
             provider,
           );
-
-          console.log('refreshed', JSON.stringify(refreshed));
 
           if (!refreshed) {
             const error = createError({
@@ -723,8 +693,6 @@ export function defineProtectedRoute<
             tokens,
           );
 
-          console.log('fullToken', JSON.stringify(fullToken));
-
           tokens = await setProviderCookies(
             event,
             fullToken,
@@ -732,8 +700,6 @@ export function defineProtectedRoute<
             options?.cookieOptions,
             instanceKey,
           );
-
-          console.log('tokens', JSON.stringify(tokens));
         }
 
         // Correctly type-safe assign token using GetProviderKey
@@ -742,9 +708,7 @@ export function defineProtectedRoute<
         type Token = TokenFor<ProviderId<Def>>;
         (ctx.h3OAuthKit as unknown as Record<Key, Token>)[providerKey as Key] =
           tokens as Token;
-        console.log('tokens reassigned', JSON.stringify(tokens));
       } catch (error) {
-        console.log('error', JSON.stringify(error));
         if (options?.onAuthFailure) {
           const response = await options.onAuthFailure(
             event,

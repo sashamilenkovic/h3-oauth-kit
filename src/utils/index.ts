@@ -58,19 +58,7 @@ export async function setProviderCookies<P extends OAuthProvider>(
     path: options?.path ?? '/',
   };
 
-  // --- DEBUG: Force 1-minute expiry for intuit, azure, clio ---
-  let expiresIn = tokens.expires_in;
-  if (provider === 'intuit' || provider === 'azure' || provider === 'clio') {
-    console.log(
-      `[DEBUG][setProviderCookies] Forcing expires_in to 60 seconds for ${provider}`,
-    );
-    expiresIn = 60;
-    console.log(
-      `[DEBUG][setProviderCookies] Original tokens for ${provider}:`,
-      JSON.stringify(tokens),
-    );
-  }
-  // -----------------------------------------------------------
+  const expiresIn = tokens.expires_in;
 
   const cleanedAccessToken = tokens.access_token.startsWith('Bearer ')
     ? tokens.access_token.slice(7)
@@ -105,43 +93,11 @@ export async function setProviderCookies<P extends OAuthProvider>(
       hasXRefreshTokenExpiresIn(tokens)
     ) {
       refreshTokenMaxAge = tokens.x_refresh_token_expires_in;
-      if (
-        provider === 'intuit' ||
-        provider === 'azure' ||
-        provider === 'clio'
-      ) {
-        console.log(
-          `[DEBUG][setProviderCookies] Using x_refresh_token_expires_in from tokens for ${provider}:`,
-          refreshTokenMaxAge,
-        );
-      }
     }
     // 2. User config override
     else if (options?.refreshTokenMaxAge) {
       refreshTokenMaxAge = options.refreshTokenMaxAge;
-      if (
-        provider === 'intuit' ||
-        provider === 'azure' ||
-        provider === 'clio'
-      ) {
-        console.log(
-          `[DEBUG][setProviderCookies] Using user-configured refreshTokenMaxAge for ${provider}:`,
-          refreshTokenMaxAge,
-        );
-      }
-    } else {
-      if (
-        provider === 'intuit' ||
-        provider === 'azure' ||
-        provider === 'clio'
-      ) {
-        console.log(
-          `[DEBUG][setProviderCookies] Using default refreshTokenMaxAge for ${provider}:`,
-          refreshTokenMaxAge,
-        );
-      }
     }
-    // -----------------------------------------------------------
 
     setCookie(event, `${providerKey}_refresh_token`, encryptedRefreshToken, {
       ...base,
@@ -663,14 +619,10 @@ export async function refreshToken<P extends OAuthProvider>(
       },
     );
 
-    console.log('refreshToken', JSON.stringify(tokenResponse));
-
     // Cast back to token response — optional string coercion step removed
     return tokenResponse;
   } catch (error: unknown) {
     const { statusCode, message } = await parseError(error);
-
-    console.log('refreshToken error', JSON.stringify({ statusCode, message }));
 
     throw createError({ statusCode, message });
   }
@@ -709,8 +661,6 @@ export async function oAuthTokensAreValid<P extends OAuthProvider>(
 ): Promise<TokenValidationResult<P> | false> {
   const providerKey = getProviderKey(provider, instanceKey);
 
-  console.log('provider key in oauth tokens are valid', providerKey);
-
   const access_token = getCookie(event, `${providerKey}_access_token`);
   const refresh_token = getCookie(event, `${providerKey}_refresh_token`);
   const access_token_expires_at = getCookie(
@@ -718,25 +668,8 @@ export async function oAuthTokensAreValid<P extends OAuthProvider>(
     `${providerKey}_access_token_expires_at`,
   );
 
-  if (provider === 'intuit' || provider === 'azure' || provider === 'clio') {
-    console.log(
-      `[DEBUG][oAuthTokensAreValid] Checking tokens for provider: ${provider}, instanceKey: ${instanceKey}`,
-    );
-    console.log(`[DEBUG][oAuthTokensAreValid] access_token:`, access_token);
-    console.log(`[DEBUG][oAuthTokensAreValid] refresh_token:`, refresh_token);
-    console.log(
-      `[DEBUG][oAuthTokensAreValid] access_token_expires_at:`,
-      access_token_expires_at,
-    );
-  }
-
   // If no refresh token, cannot recover
   if (!refresh_token) {
-    if (provider === 'intuit' || provider === 'azure' || provider === 'clio') {
-      console.log(
-        `[DEBUG][oAuthTokensAreValid] No refresh token for ${provider}, returning false`,
-      );
-    }
     return false;
   }
 
@@ -748,11 +681,6 @@ export async function oAuthTokensAreValid<P extends OAuthProvider>(
 
   // If access token is missing, but refresh token is present, trigger refresh
   if (!access_token) {
-    if (provider === 'intuit' || provider === 'azure' || provider === 'clio') {
-      console.log(
-        `[DEBUG][oAuthTokensAreValid] Access token missing but refresh token present for ${provider}, will trigger refresh`,
-      );
-    }
     return {
       tokens: {
         refresh_token: decryptedRefreshToken,
@@ -764,11 +692,6 @@ export async function oAuthTokensAreValid<P extends OAuthProvider>(
 
   // If access_token_expires_at is missing, but refresh token is present, trigger refresh
   if (!access_token_expires_at) {
-    if (provider === 'intuit' || provider === 'azure' || provider === 'clio') {
-      console.log(
-        `[DEBUG][oAuthTokensAreValid] access_token_expires_at missing but refresh token present for ${provider}, will trigger refresh`,
-      );
-    }
     return {
       tokens: {
         access_token,
@@ -781,12 +704,6 @@ export async function oAuthTokensAreValid<P extends OAuthProvider>(
   const expires_in = parseInt(access_token_expires_at, 10);
   const now = Math.floor(Date.now() / 1000);
   const isAccessTokenExpired = now >= expires_in;
-
-  if (provider === 'intuit' || provider === 'azure' || provider === 'clio') {
-    console.log(
-      `[DEBUG][oAuthTokensAreValid] Current time: ${now}, Expires at: ${expires_in}, Expired: ${isAccessTokenExpired} for ${provider}`,
-    );
-  }
 
   const base = {
     access_token,
@@ -802,34 +719,12 @@ export async function oAuthTokensAreValid<P extends OAuthProvider>(
     );
 
     if (!refreshExpiresAt) {
-      if (
-        provider === 'intuit' ||
-        provider === 'azure' ||
-        provider === 'clio'
-      ) {
-        console.log(
-          `[DEBUG][oAuthTokensAreValid] missing refresh token expires at for ${provider}`,
-          {
-            refreshExpiresAt,
-          },
-        );
-      }
       return false;
     }
 
     const refreshExpiry = parseInt(refreshExpiresAt, 10);
 
     if (isNaN(refreshExpiry) || now >= refreshExpiry) {
-      if (
-        provider === 'intuit' ||
-        provider === 'azure' ||
-        provider === 'clio'
-      ) {
-        console.log(
-          `[DEBUG][oAuthTokensAreValid] refresh token expired or invalid for ${provider}`,
-          { refreshExpiry, now },
-        );
-      }
       return {
         tokens: {
           ...base,
@@ -847,11 +742,6 @@ export async function oAuthTokensAreValid<P extends OAuthProvider>(
   );
 
   if (additionalFields === false) {
-    if (provider === 'intuit' || provider === 'azure' || provider === 'clio') {
-      console.log(
-        `[DEBUG][oAuthTokensAreValid] missing additional fields for ${provider}`,
-      );
-    }
     return false;
   }
 
@@ -861,10 +751,6 @@ export async function oAuthTokensAreValid<P extends OAuthProvider>(
   } as OAuthProviderTokenMap[P];
 
   if (provider === 'intuit' || provider === 'azure' || provider === 'clio') {
-    console.log(
-      `[DEBUG][oAuthTokensAreValid] Final tokens object for ${provider}:`,
-      JSON.stringify(tokens),
-    );
   }
 
   return {
