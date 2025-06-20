@@ -610,6 +610,7 @@ export function defineProtectedRoute<
   ) => Promise<unknown>,
   options?: ProtectedRouteOptions<InstanceKeys>,
 ): EventHandler {
+  console.log('defineProtectedRoute entry', providers);
   return defineEventHandler(async (event): Promise<unknown> => {
     const ctx = event.context as AugmentedContext<Defs, InstanceKeys>;
 
@@ -648,7 +649,6 @@ export function defineProtectedRoute<
             provider,
           );
           console.log('discoveredInstanceKey', discoveredInstanceKey);
-          console.log('provider', provider);
           if (discoveredInstanceKey) {
             instanceKey = discoveredInstanceKey;
             providerKey = getProviderKey(provider, instanceKey);

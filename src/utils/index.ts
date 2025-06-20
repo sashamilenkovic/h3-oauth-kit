@@ -59,16 +59,30 @@ export async function setProviderCookies<P extends OAuthProvider>(
     path: options?.path ?? '/',
   };
 
+  // --- DEBUG: Force 5-minute expiry for intuit ---
+  let expiresIn = tokens.expires_in;
+  if (provider === 'intuit') {
+    console.log(
+      '[DEBUG][setProviderCookies] Forcing expires_in to 300 seconds for intuit',
+    );
+    expiresIn = 300;
+    console.log(
+      '[DEBUG][setProviderCookies] Original tokens:',
+      JSON.stringify(tokens),
+    );
+  }
+  // -----------------------------------------------
+
   const cleanedAccessToken = tokens.access_token.startsWith('Bearer ')
     ? tokens.access_token.slice(7)
     : tokens.access_token;
 
   setCookie(event, `${providerKey}_access_token`, cleanedAccessToken, {
     ...base,
-    maxAge: tokens.expires_in,
+    maxAge: expiresIn,
   });
 
-  const expiry = Math.floor(Date.now() / 1000) + tokens.expires_in;
+  const expiry = Math.floor(Date.now() / 1000) + expiresIn;
 
   setCookie(
     event,
@@ -658,11 +672,22 @@ export async function oAuthTokensAreValid<P extends OAuthProvider>(
     `${providerKey}_access_token_expires_at`,
   );
 
+  if (provider === 'intuit') {
+    console.log(
+      `[DEBUG][oAuthTokensAreValid] Checking tokens for provider: ${provider}, instanceKey: ${instanceKey}`,
+    );
+    console.log(`[DEBUG][oAuthTokensAreValid] access_token:`, access_token);
+    console.log(`[DEBUG][oAuthTokensAreValid] refresh_token:`, refresh_token);
+    console.log(
+      `[DEBUG][oAuthTokensAreValid] access_token_expires_at:`,
+      access_token_expires_at,
+    );
+  }
+
   if (!access_token || !refresh_token || !access_token_expires_at) {
-    console.log('missing tokens');
-    console.log('access_token', access_token);
-    console.log('refresh_token', refresh_token);
-    console.log('access_token_expires_at', access_token_expires_at);
+    if (provider === 'intuit') {
+      console.log('[DEBUG][oAuthTokensAreValid] missing tokens');
+    }
     return false;
   }
 
@@ -678,6 +703,12 @@ export async function oAuthTokensAreValid<P extends OAuthProvider>(
 
   const isAccessTokenExpired = now >= expires_in;
 
+  if (provider === 'intuit') {
+    console.log(
+      `[DEBUG][oAuthTokensAreValid] Current time: ${now}, Expires at: ${expires_in}, Expired: ${isAccessTokenExpired}`,
+    );
+  }
+
   const base = {
     access_token,
     refresh_token: decryptedRefreshToken,
@@ -692,15 +723,26 @@ export async function oAuthTokensAreValid<P extends OAuthProvider>(
     );
 
     if (!refreshExpiresAt) {
-      console.log('missing refresh token expires at', {
-        refreshExpiresAt,
-      });
+      if (provider === 'intuit') {
+        console.log(
+          '[DEBUG][oAuthTokensAreValid] missing refresh token expires at',
+          {
+            refreshExpiresAt,
+          },
+        );
+      }
       return false;
     }
 
     const refreshExpiry = parseInt(refreshExpiresAt, 10);
 
     if (isNaN(refreshExpiry) || now >= refreshExpiry) {
+      if (provider === 'intuit') {
+        console.log(
+          '[DEBUG][oAuthTokensAreValid] refresh token expired or invalid',
+          { refreshExpiry, now },
+        );
+      }
       return {
         tokens: {
           ...base,
@@ -718,8 +760,9 @@ export async function oAuthTokensAreValid<P extends OAuthProvider>(
   );
 
   if (additionalFields === false) {
-    console.log('missing additional fields');
-    console.log('additionalFields', additionalFields);
+    if (provider === 'intuit') {
+      console.log('[DEBUG][oAuthTokensAreValid] missing additional fields');
+    }
     return false;
   }
 
@@ -728,17 +771,12 @@ export async function oAuthTokensAreValid<P extends OAuthProvider>(
     ...additionalFields,
   } as OAuthProviderTokenMap[P];
 
-  console.log(
-    'tokens',
-    JSON.stringify(
-      {
-        tokens,
-        isAccessTokenExpired,
-      },
-      null,
-      2,
-    ),
-  );
+  if (provider === 'intuit') {
+    console.log(
+      '[DEBUG][oAuthTokensAreValid] Final tokens object:',
+      JSON.stringify(tokens),
+    );
+  }
 
   return {
     tokens,
