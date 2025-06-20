@@ -1,3 +1,10 @@
+# [0.10.0-debug.20](https://github.com/sashamilenkovic/h3-oauth-kit/compare/v0.10.0-debug.19...v0.10.0-debug.20) (2025-06-20)
+
+
+### Features
+
+* removes all console logs ([849f697](https://github.com/sashamilenkovic/h3-oauth-kit/commit/849f697b5cbc73cabc06812395c475f1f00747b2))
+
 # [0.10.0-debug.19](https://github.com/sashamilenkovic/h3-oauth-kit/compare/v0.10.0-debug.18...v0.10.0-debug.19) (2025-06-20)
 
 
