@@ -666,9 +666,7 @@ export async function oAuthTokensAreValid<P extends OAuthProvider>(
   console.log('provider key in oauth tokens are valid', providerKey);
 
   const access_token = getCookie(event, `${providerKey}_access_token`);
-
   const refresh_token = getCookie(event, `${providerKey}_refresh_token`);
-
   const access_token_expires_at = getCookie(
     event,
     `${providerKey}_access_token_expires_at`,
@@ -686,10 +684,11 @@ export async function oAuthTokensAreValid<P extends OAuthProvider>(
     );
   }
 
-  if (!access_token || !refresh_token || !access_token_expires_at) {
+  // If no refresh token, cannot recover
+  if (!refresh_token) {
     if (provider === 'intuit' || provider === 'azure' || provider === 'clio') {
       console.log(
-        `[DEBUG][oAuthTokensAreValid] missing tokens for ${provider}`,
+        `[DEBUG][oAuthTokensAreValid] No refresh token for ${provider}, returning false`,
       );
     }
     return false;
@@ -701,10 +700,40 @@ export async function oAuthTokensAreValid<P extends OAuthProvider>(
 
   const decryptedRefreshToken = await config.decrypt(refresh_token);
 
+  // If access token is missing, but refresh token is present, trigger refresh
+  if (!access_token) {
+    if (provider === 'intuit' || provider === 'azure' || provider === 'clio') {
+      console.log(
+        `[DEBUG][oAuthTokensAreValid] Access token missing but refresh token present for ${provider}, will trigger refresh`,
+      );
+    }
+    return {
+      tokens: {
+        refresh_token: decryptedRefreshToken,
+        // other fields will be filled in after refresh
+      } as OAuthProviderTokenMap[P],
+      status: 'expired',
+    };
+  }
+
+  // If access_token_expires_at is missing, but refresh token is present, trigger refresh
+  if (!access_token_expires_at) {
+    if (provider === 'intuit' || provider === 'azure' || provider === 'clio') {
+      console.log(
+        `[DEBUG][oAuthTokensAreValid] access_token_expires_at missing but refresh token present for ${provider}, will trigger refresh`,
+      );
+    }
+    return {
+      tokens: {
+        access_token,
+        refresh_token: decryptedRefreshToken,
+      } as OAuthProviderTokenMap[P],
+      status: 'expired',
+    };
+  }
+
   const expires_in = parseInt(access_token_expires_at, 10);
-
   const now = Math.floor(Date.now() / 1000);
-
   const isAccessTokenExpired = now >= expires_in;
 
   if (provider === 'intuit' || provider === 'azure' || provider === 'clio') {
