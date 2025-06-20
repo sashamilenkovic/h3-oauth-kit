@@ -1,3 +1,10 @@
+# [0.10.0-debug.13](https://github.com/sashamilenkovic/h3-oauth-kit/compare/v0.10.0-debug.12...v0.10.0-debug.13) (2025-06-20)
+
+
+### Features
+
+* sets expiry to five minutes from current time for all providers for testing ([8a7ef1c](https://github.com/sashamilenkovic/h3-oauth-kit/commit/8a7ef1cb765a42d5485ef7c182a4f7ec1fc46ac0))
+
 # [0.10.0-debug.12](https://github.com/sashamilenkovic/h3-oauth-kit/compare/v0.10.0-debug.11...v0.10.0-debug.12) (2025-06-20)
 
 
