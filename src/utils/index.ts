@@ -19,7 +19,6 @@ import { setCookie, getCookie, deleteCookie, getQuery, createError } from 'h3';
 import { providerConfig } from '../providerConfig';
 import { ofetch } from 'ofetch';
 import { getOAuthProviderConfig } from '..';
-import { access } from 'fs';
 
 /**
  * @internal
@@ -59,7 +58,7 @@ export async function setProviderCookies<P extends OAuthProvider>(
     path: options?.path ?? '/',
   };
 
-  // --- DEBUG: Force 5-minute expiry for intuit, azure, clio ---
+  // --- DEBUG: Force 1-minute expiry for intuit, azure, clio ---
   let expiresIn = tokens.expires_in;
   if (provider === 'intuit' || provider === 'azure' || provider === 'clio') {
     console.log(
@@ -98,9 +97,55 @@ export async function setProviderCookies<P extends OAuthProvider>(
   if (tokens.refresh_token) {
     const encryptedRefreshToken = await config.encrypt(tokens.refresh_token);
 
+    // --- Determine refresh token maxAge ---
+    let refreshTokenMaxAge = 30 * 24 * 60 * 60; // Default: 30 days
+    // 1. If providerConfig.validateRefreshTokenExpiry is true and tokens.x_refresh_token_expires_in is a number, use it
+    if (
+      providerConfig[provider].validateRefreshTokenExpiry &&
+      hasXRefreshTokenExpiresIn(tokens)
+    ) {
+      refreshTokenMaxAge = tokens.x_refresh_token_expires_in;
+      if (
+        provider === 'intuit' ||
+        provider === 'azure' ||
+        provider === 'clio'
+      ) {
+        console.log(
+          `[DEBUG][setProviderCookies] Using x_refresh_token_expires_in from tokens for ${provider}:`,
+          refreshTokenMaxAge,
+        );
+      }
+    }
+    // 2. User config override
+    else if (options?.refreshTokenMaxAge) {
+      refreshTokenMaxAge = options.refreshTokenMaxAge;
+      if (
+        provider === 'intuit' ||
+        provider === 'azure' ||
+        provider === 'clio'
+      ) {
+        console.log(
+          `[DEBUG][setProviderCookies] Using user-configured refreshTokenMaxAge for ${provider}:`,
+          refreshTokenMaxAge,
+        );
+      }
+    } else {
+      if (
+        provider === 'intuit' ||
+        provider === 'azure' ||
+        provider === 'clio'
+      ) {
+        console.log(
+          `[DEBUG][setProviderCookies] Using default refreshTokenMaxAge for ${provider}:`,
+          refreshTokenMaxAge,
+        );
+      }
+    }
+    // -----------------------------------------------------------
+
     setCookie(event, `${providerKey}_refresh_token`, encryptedRefreshToken, {
       ...base,
-      maxAge: 30 * 24 * 60 * 60, // 30 days
+      maxAge: refreshTokenMaxAge,
     });
   }
 
@@ -1320,4 +1365,17 @@ export function withInstanceKeys<
     instanceResolver: resolver,
     __instanceKeys: instanceKeys,
   };
+}
+
+// Add a type guard for x_refresh_token_expires_in
+function hasXRefreshTokenExpiresIn(
+  obj: unknown,
+): obj is { x_refresh_token_expires_in: number } {
+  return (
+    typeof obj === 'object' &&
+    obj !== null &&
+    'x_refresh_token_expires_in' in obj &&
+    typeof (obj as Record<string, unknown>).x_refresh_token_expires_in ===
+      'number'
+  );
 }
