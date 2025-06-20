@@ -1,3 +1,10 @@
+# [0.10.0-debug.19](https://github.com/sashamilenkovic/h3-oauth-kit/compare/v0.10.0-debug.18...v0.10.0-debug.19) (2025-06-20)
+
+
+### Bug Fixes
+
+* when attempting to discover provider instance, was checking access_token, now checking refresh_token ([b0424db](https://github.com/sashamilenkovic/h3-oauth-kit/commit/b0424db84a248f51ba05fa981c4b2e6bbdbce9ef))
+
 # [0.10.0-debug.18](https://github.com/sashamilenkovic/h3-oauth-kit/compare/v0.10.0-debug.17...v0.10.0-debug.18) (2025-06-20)
 
 
