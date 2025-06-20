@@ -1309,7 +1309,7 @@ export function discoverProviderInstance(
   provider: OAuthProvider,
 ): string | undefined {
   // First try global provider
-  const globalKey = `${provider}_access_token`;
+  const globalKey = `${provider}_refresh_token`;
   if (getCookie(event, globalKey)) {
     return undefined; // Global provider found, no instanceKey needed
   }
@@ -1318,7 +1318,7 @@ export function discoverProviderInstance(
   const cookies = event.node.req.headers.cookie;
   if (!cookies) return undefined;
 
-  const cookiePattern = new RegExp(`${provider}:([^_]+)_access_token=`);
+  const cookiePattern = new RegExp(`${provider}:([^_]+)_refresh_token=`);
   const matches = cookies.match(cookiePattern);
 
   if (matches && matches[1]) {

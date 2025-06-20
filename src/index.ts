@@ -634,6 +634,7 @@ export function defineProtectedRoute<
           }
         }
 
+        console.log('instanceKey', instanceKey);
         let providerKey = getProviderKey(provider, instanceKey);
         let result = await oAuthTokensAreValid(event, provider, instanceKey);
         console.log(
