@@ -58,16 +58,18 @@ export async function setProviderCookies<P extends OAuthProvider>(
     path: options?.path ?? '/',
   };
 
+  const expiresIn = tokens.expires_in;
+
   const cleanedAccessToken = tokens.access_token.startsWith('Bearer ')
     ? tokens.access_token.slice(7)
     : tokens.access_token;
 
   setCookie(event, `${providerKey}_access_token`, cleanedAccessToken, {
     ...base,
-    maxAge: tokens.expires_in,
+    maxAge: expiresIn,
   });
 
-  const expiry = Math.floor(Date.now() / 1000) + tokens.expires_in;
+  const expiry = Math.floor(Date.now() / 1000) + expiresIn;
 
   setCookie(
     event,
@@ -83,9 +85,20 @@ export async function setProviderCookies<P extends OAuthProvider>(
   if (tokens.refresh_token) {
     const encryptedRefreshToken = await config.encrypt(tokens.refresh_token);
 
+    let refreshTokenMaxAge = 30 * 24 * 60 * 60; // Default: 30 days
+
+    if (
+      providerConfig[provider].validateRefreshTokenExpiry &&
+      hasXRefreshTokenExpiresIn(tokens)
+    ) {
+      refreshTokenMaxAge = tokens.x_refresh_token_expires_in;
+    } else if (options?.refreshTokenMaxAge) {
+      refreshTokenMaxAge = options.refreshTokenMaxAge;
+    }
+
     setCookie(event, `${providerKey}_refresh_token`, encryptedRefreshToken, {
       ...base,
-      maxAge: 30 * 24 * 60 * 60, // 30 days
+      maxAge: refreshTokenMaxAge,
     });
   }
 
@@ -307,6 +320,7 @@ export function buildAuthUrl({
   url.searchParams.set('response_type', 'code');
   url.searchParams.set('scope', scopes.join(' '));
   url.searchParams.set('state', state);
+
   return url.toString();
 }
 
@@ -583,6 +597,7 @@ export async function refreshToken<P extends OAuthProvider>(
   const requestConfig = {
     url: providerConfig.tokenEndpoint,
     params: {
+      client_id: providerConfig.clientId,
       client_secret: providerConfig.clientSecret,
       refresh_token: refreshTokenValue,
       grant_type: 'refresh_token',
@@ -644,31 +659,52 @@ export async function oAuthTokensAreValid<P extends OAuthProvider>(
   const providerKey = getProviderKey(provider, instanceKey);
 
   const access_token = getCookie(event, `${providerKey}_access_token`);
-
   const refresh_token = getCookie(event, `${providerKey}_refresh_token`);
-
   const access_token_expires_at = getCookie(
     event,
     `${providerKey}_access_token_expires_at`,
   );
 
-  if (!access_token || !refresh_token || !access_token_expires_at) return false;
+  // If no refresh token, cannot recover
+  if (!refresh_token) {
+    return false;
+  }
 
   const config = instanceKey
     ? getOAuthProviderConfig(provider, instanceKey)
     : getOAuthProviderConfig(provider);
 
-  const encryptedRefreshToken = await config.decrypt(refresh_token);
+  const decryptedRefreshToken = await config.decrypt(refresh_token);
+
+  // If access token is missing, but refresh token is present, trigger refresh
+  if (!access_token) {
+    return {
+      tokens: {
+        refresh_token: decryptedRefreshToken,
+        // other fields will be filled in after refresh
+      } as OAuthProviderTokenMap[P],
+      status: 'expired',
+    };
+  }
+
+  // If access_token_expires_at is missing, but refresh token is present, trigger refresh
+  if (!access_token_expires_at) {
+    return {
+      tokens: {
+        access_token,
+        refresh_token: decryptedRefreshToken,
+      } as OAuthProviderTokenMap[P],
+      status: 'expired',
+    };
+  }
 
   const expires_in = parseInt(access_token_expires_at, 10);
-
   const now = Math.floor(Date.now() / 1000);
-
   const isAccessTokenExpired = now >= expires_in;
 
   const base = {
     access_token,
-    refresh_token: encryptedRefreshToken,
+    refresh_token: decryptedRefreshToken,
     expires_in,
   };
 
@@ -679,7 +715,9 @@ export async function oAuthTokensAreValid<P extends OAuthProvider>(
       `${providerKey}_refresh_token_expires_at`,
     );
 
-    if (!refreshExpiresAt) return false;
+    if (!refreshExpiresAt) {
+      return false;
+    }
 
     const refreshExpiry = parseInt(refreshExpiresAt, 10);
 
@@ -700,12 +738,17 @@ export async function oAuthTokensAreValid<P extends OAuthProvider>(
     providerKey,
   );
 
-  if (additionalFields === false) return false;
+  if (additionalFields === false) {
+    return false;
+  }
 
   const tokens = {
     ...base,
     ...additionalFields,
   } as OAuthProviderTokenMap[P];
+
+  if (provider === 'intuit' || provider === 'azure' || provider === 'clio') {
+  }
 
   return {
     tokens,
@@ -1149,7 +1192,7 @@ export function discoverProviderInstance(
   provider: OAuthProvider,
 ): string | undefined {
   // First try global provider
-  const globalKey = `${provider}_access_token`;
+  const globalKey = `${provider}_refresh_token`;
   if (getCookie(event, globalKey)) {
     return undefined; // Global provider found, no instanceKey needed
   }
@@ -1158,7 +1201,7 @@ export function discoverProviderInstance(
   const cookies = event.node.req.headers.cookie;
   if (!cookies) return undefined;
 
-  const cookiePattern = new RegExp(`${provider}:([^_]+)_access_token=`);
+  const cookiePattern = new RegExp(`${provider}:([^_]+)_refresh_token=`);
   const matches = cookies.match(cookiePattern);
 
   if (matches && matches[1]) {
@@ -1205,4 +1248,17 @@ export function withInstanceKeys<
     instanceResolver: resolver,
     __instanceKeys: instanceKeys,
   };
+}
+
+// Add a type guard for x_refresh_token_expires_in
+function hasXRefreshTokenExpiresIn(
+  obj: unknown,
+): obj is { x_refresh_token_expires_in: number } {
+  return (
+    typeof obj === 'object' &&
+    obj !== null &&
+    'x_refresh_token_expires_in' in obj &&
+    typeof (obj as Record<string, unknown>).x_refresh_token_expires_in ===
+      'number'
+  );
 }

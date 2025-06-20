@@ -344,6 +344,12 @@ export function handleOAuthCallback<P extends OAuthProvider>(
       event: H3Event,
       provider: P,
     ) => Promise<unknown> | unknown;
+    instanceEquivalent?: (
+      rawTokens: OAuthProviderTokenMap[P],
+      event: H3Event,
+      provider: P,
+      instanceKey?: string,
+    ) => Promise<boolean> | boolean;
   },
   event: H3Event,
 ): Promise<{
@@ -364,6 +370,12 @@ export function handleOAuthCallback<P extends OAuthProvider>(
       event: H3Event,
       provider: P,
     ) => Promise<unknown> | unknown;
+    instanceEquivalent?: (
+      rawTokens: OAuthProviderTokenMap[P],
+      event: H3Event,
+      provider: P,
+      instanceKey?: string,
+    ) => Promise<boolean> | boolean;
   },
   event: H3Event,
 ): Promise<void>;
@@ -380,6 +392,12 @@ export function handleOAuthCallback<P extends OAuthProvider>(
       event: H3Event,
       provider: P,
     ) => Promise<unknown> | unknown;
+    instanceEquivalent?: (
+      rawTokens: OAuthProviderTokenMap[P],
+      event: H3Event,
+      provider: P,
+      instanceKey?: string,
+    ) => Promise<boolean> | boolean;
   },
   event?: undefined,
 ): EventHandler;
@@ -395,6 +413,12 @@ export function handleOAuthCallback<P extends OAuthProvider>(
       event: H3Event,
       provider: P,
     ) => Promise<unknown> | unknown;
+    instanceEquivalent?: (
+      rawTokens: OAuthProviderTokenMap[P],
+      event: H3Event,
+      provider: P,
+      instanceKey?: string,
+    ) => Promise<boolean> | boolean;
   },
   event?: H3Event,
 ):
@@ -441,6 +465,23 @@ export function handleOAuthCallback<P extends OAuthProvider>(
         : getOAuthProviderConfig(provider);
 
       const rawTokens = await exchangeCodeForTokens(code, config, provider);
+
+      // Add user validation step
+      if (options?.instanceEquivalent) {
+        const isValid = await options.instanceEquivalent(
+          rawTokens,
+          evt,
+          provider,
+          instanceKey,
+        );
+
+        if (!isValid) {
+          throw createError({
+            statusCode: 401,
+            statusMessage: 'User validation failed after OAuth callback',
+          });
+        }
+      }
 
       // Clear non-preserved cookies if not in preserve mode
       if (!preserveInstance) {
@@ -607,6 +648,7 @@ export function defineProtectedRoute<
               'missing-or-invalid-tokens',
               error,
             );
+
             if (response !== undefined) return response;
           }
 

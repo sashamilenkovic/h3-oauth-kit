@@ -174,6 +174,7 @@ export type OAuthStateValue =
 export interface CookieOptionsOverride {
   sameSite?: 'lax' | 'none';
   path?: string;
+  refreshTokenMaxAge?: number;
 }
 
 export interface HandleOAuthCallbackOptions {
