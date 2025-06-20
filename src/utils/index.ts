@@ -63,9 +63,9 @@ export async function setProviderCookies<P extends OAuthProvider>(
   let expiresIn = tokens.expires_in;
   if (provider === 'intuit' || provider === 'azure' || provider === 'clio') {
     console.log(
-      `[DEBUG][setProviderCookies] Forcing expires_in to 300 seconds for ${provider}`,
+      `[DEBUG][setProviderCookies] Forcing expires_in to 60 seconds for ${provider}`,
     );
-    expiresIn = 300;
+    expiresIn = 60;
     console.log(
       `[DEBUG][setProviderCookies] Original tokens for ${provider}:`,
       JSON.stringify(tokens),
