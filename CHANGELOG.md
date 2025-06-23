@@ -1,3 +1,10 @@
+# [0.10.0](https://github.com/sashamilenkovic/h3-oauth-kit/compare/v0.9.1...v0.10.0) (2025-06-23)
+
+
+### Features
+
+* add h3OauthKitInstances context ([acd0c70](https://github.com/sashamilenkovic/h3-oauth-kit/commit/acd0c70197dbd053fc5a62cf31924c45e74f9e95))
+
 ## [0.9.1](https://github.com/sashamilenkovic/h3-oauth-kit/compare/v0.9.0...v0.9.1) (2025-06-20)
 
 
