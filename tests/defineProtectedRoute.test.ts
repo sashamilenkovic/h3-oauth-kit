@@ -744,4 +744,124 @@ describe('defineProtectedRoute (multi-provider)', () => {
   });
 
   // resolveInstance functionality has been removed in favor of withInstanceKeys helper
+
+  it('populates h3OAuthKitInstances with resolved instance keys', async () => {
+    const event = createMockEvent();
+
+    // Mock token validation for different provider configurations
+    mockTokensValid.mockImplementation(
+      async <P extends 'clio' | 'azure' | 'intuit'>(
+        _event: unknown,
+        provider: P,
+        instanceKey?: string,
+      ): Promise<TokenValidationResult<P>> => {
+        const key = instanceKey ? `${provider}:${instanceKey}` : provider;
+
+        if (provider === 'azure') {
+          return {
+            status: 'valid',
+            tokens: {
+              access_token: `token-${key}`,
+              refresh_token: 'refresh',
+              expires_in: 3600,
+              token_type: 'bearer',
+              ext_expires_in: 3600,
+              scope: 'user.read',
+              id_token: 'id-token',
+            },
+          } as TokenValidationResult<P>;
+        }
+
+        return {
+          status: 'valid',
+          tokens: {
+            access_token: `token-${key}`,
+            refresh_token: 'refresh',
+            expires_in: 3600,
+            token_type: 'bearer',
+            client_id: 'client-123',
+          },
+        } as TokenValidationResult<P>;
+      },
+    );
+
+    const { withInstanceKeys } = await import('../src/utils');
+
+    const handler = defineProtectedRoute(
+      [
+        'clio', // Global provider (no instance key)
+        { provider: 'azure', instanceKey: 'dev' }, // Explicit instance key
+        withInstanceKeys('clio', ['smithlaw', 'LOAG'], () => 'smithlaw'), // Dynamic instance key
+      ],
+      async (evt) => {
+        // Verify that h3OAuthKitInstances is populated correctly
+        const instances = evt.context.h3OAuthKitInstances;
+
+        return {
+          // Access the resolved instance keys
+          clioInstanceKey: instances.clio, // Should be 'smithlaw' from the resolver
+          azureInstanceKey: instances.azure, // Should be 'dev' from explicit instanceKey
+          // Verify tokens are accessible using the instance keys
+          clioTokens: instances.clio
+            ? evt.context.h3OAuthKit[
+                `clio:${instances.clio}` as keyof typeof evt.context.h3OAuthKit
+              ]
+            : evt.context.h3OAuthKit['clio'],
+          azureTokens: evt.context.h3OAuthKit['azure:dev'],
+          globalClioTokens: evt.context.h3OAuthKit['clio'],
+        };
+      },
+    );
+
+    const result = await handler(event);
+
+    expect(result).toEqual({
+      clioInstanceKey: 'smithlaw', // Resolved from withInstanceKeys resolver
+      azureInstanceKey: 'dev', // From explicit instanceKey
+      clioTokens: expect.objectContaining({
+        access_token: 'token-clio:smithlaw',
+      }),
+      azureTokens: expect.objectContaining({
+        access_token: 'token-azure:dev',
+      }),
+      globalClioTokens: expect.objectContaining({
+        access_token: 'token-clio',
+      }),
+    });
+
+    // Verify that oAuthTokensAreValid was called with the correct instance keys
+    expect(mockTokensValid).toHaveBeenCalledWith(event, 'clio', undefined); // Global clio
+    expect(mockTokensValid).toHaveBeenCalledWith(event, 'azure', 'dev'); // Scoped azure
+    expect(mockTokensValid).toHaveBeenCalledWith(event, 'clio', 'smithlaw'); // Scoped clio from resolver
+  });
+
+  it('sets instance keys to undefined for non-scoped providers', async () => {
+    const event = createMockEvent();
+
+    mockTokensValid.mockResolvedValue({
+      status: 'valid',
+      tokens: {
+        access_token: 'global-token',
+        refresh_token: 'refresh',
+        expires_in: 3600,
+        token_type: 'bearer',
+        client_id: 'client-123',
+      },
+    } as TokenValidationResult<'clio'>);
+
+    const handler = defineProtectedRoute(
+      ['clio'], // Only global provider, no instance keys
+      async (evt) => ({
+        clioInstanceKey: evt.context.h3OAuthKitInstances.clio, // Should be undefined
+        hasClioTokens: !!evt.context.h3OAuthKit['clio'],
+      }),
+    );
+
+    const result = await handler(event);
+
+    expect(result).toEqual({
+      clioInstanceKey: undefined, // No instance key for global provider
+      hasClioTokens: true,
+    });
+  });
 });

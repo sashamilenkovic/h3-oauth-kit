@@ -603,6 +603,10 @@ export function defineProtectedRoute<
     const ctx = event.context as AugmentedContext<Defs, InstanceKeys>;
 
     ctx.h3OAuthKit = {} as AugmentedContext<Defs, InstanceKeys>['h3OAuthKit'];
+    ctx.h3OAuthKitInstances = {} as AugmentedContext<
+      Defs,
+      InstanceKeys
+    >['h3OAuthKitInstances'];
 
     for (const def of providers) {
       const isScoped = typeof def !== 'string';
@@ -708,6 +712,12 @@ export function defineProtectedRoute<
         type Token = TokenFor<ProviderId<Def>>;
         (ctx.h3OAuthKit as unknown as Record<Key, Token>)[providerKey as Key] =
           tokens as Token;
+
+        // Store the resolved instance key
+        const baseProvider = isScoped ? def.provider : def;
+        (ctx.h3OAuthKitInstances as Record<string, string | undefined>)[
+          baseProvider
+        ] = instanceKey;
       } catch (error) {
         if (options?.onAuthFailure) {
           const response = await options.onAuthFailure(

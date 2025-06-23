@@ -327,6 +327,7 @@ export type AugmentedContext<
   h3OAuthKit: {
     [P in Defs[number] as GetProviderKey<P>]: OAuthProviderTokenMap[ProviderId<P>];
   };
+  h3OAuthKitInstances: ResolvedInstances<Defs>;
 };
 
 export type ExtractProvider<P> = P extends { provider: infer T } ? T : P;
@@ -373,3 +374,17 @@ export type InputOAuthProviderConfigMap = {
   clio: InputClioOAuthProviderConfig;
   intuit: InputIntuitOAuthProviderConfig;
 };
+
+// Type for resolved instance keys passed to the handler
+export type ResolvedInstances<Defs extends (OAuthProvider | ScopedProvider)[]> =
+  {
+    [K in Defs[number] as ProviderId<K>]: K extends string
+      ? undefined
+      : K extends { instanceKey: string }
+      ? K['instanceKey']
+      : K extends { __instanceKeys: readonly (infer T)[] }
+      ? T extends string
+        ? T
+        : undefined
+      : undefined;
+  };

@@ -296,6 +296,112 @@ export default defineProtectedRoute(
 
 > 💡 This is especially powerful because all tokens are type-safe — you get full IntelliSense and validation for each provider's token fields, and the context keys automatically reflect whether you're using global (`azure`) or scoped (`azure:tenant-a`) providers.
 
+#### Accessing Resolved Instance Keys
+
+When using `withInstanceKeys` for dynamic instance resolution, you can access the resolved instance keys directly from the event context via `h3OAuthKitInstances`. This provides full type safety and eliminates the need to re-extract router parameters:
+
+```ts
+import {
+  defineProtectedRoute,
+  withInstanceKeys,
+} from '@sasha-milenkovic/h3-oauth-kit';
+import { getRouterParams, createError } from 'h3';
+
+const getClioAccountIds = () => ['811014901', '12345', '810204859'];
+const isValidClioAccountId = (id: string) => getClioAccountIds().includes(id);
+
+export default defineProtectedRoute(
+  [
+    'azure',
+    withInstanceKeys('clio', getClioAccountIds(), (event) => {
+      const { clioId } = getRouterParams(event);
+
+      if (!clioId) {
+        throw createError({
+          statusCode: 400,
+          message: 'Clio account ID is required',
+        });
+      }
+
+      if (!isValidClioAccountId(clioId)) {
+        throw createError({
+          statusCode: 400,
+          message: 'Invalid Clio account ID',
+        });
+      }
+
+      return clioId; // Returns typed instance key
+    }),
+  ],
+  async (event) => {
+    // ✨ NEW: Access the typed instance key directly from context!
+    const clioId = event.context.h3OAuthKitInstances.clio; // Type: "811014901" | "12345" | "810204859"
+
+    // No need to re-extract from router params!
+    if (!clioId) {
+      throw createError({ statusCode: 400, message: 'Missing clio instance' });
+    }
+
+    // This now works with full type safety!
+    const clioTokens = event.context.h3OAuthKit[`clio:${clioId}`];
+    const azureTokens = event.context.h3OAuthKit.azure;
+
+    return {
+      clioId, // Fully typed as "811014901" | "12345" | "810204859"
+      hasClioTokens: !!clioTokens,
+      hasAzureTokens: !!azureTokens,
+    };
+  },
+);
+```
+
+**Benefits:**
+
+- ✅ **Full type safety** - TypeScript knows the exact possible instance keys
+- ✅ **No re-extraction needed** - The resolved key is already validated and typed
+- ✅ **Zero breaking changes** - Existing code continues to work
+- ✅ **Better developer experience** - IntelliSense shows available instance keys
+
+**Context Properties:**
+
+```ts
+// For global providers
+event.context.h3OAuthKitInstances.azure; // undefined (no instance key)
+
+// For scoped providers with explicit instanceKey
+event.context.h3OAuthKitInstances.clio; // "smithlaw" (from { provider: "clio", instanceKey: "smithlaw" })
+
+// For scoped providers with withInstanceKeys resolver
+event.context.h3OAuthKitInstances.clio; // "811014901" | "12345" | "810204859" (typed union from resolver)
+```
+
+---
+
+### `withInstanceKeys(provider, instanceKeys, resolver)`
+
+A utility for creating typed provider definitions with explicit instance keys. This enables better TypeScript support when working with dynamic instance resolution.
+
+```ts
+import { withInstanceKeys } from '@sasha-milenkovic/h3-oauth-kit';
+
+// Define possible instance keys and resolution logic
+const clioProvider = withInstanceKeys(
+  'clio',
+  ['smithlaw', 'johnsonlegal', 'LOAG'],
+  (event) => {
+    const { firmId } = getRouterParams(event);
+    return firmId; // TypeScript knows this must be one of the defined keys
+  },
+);
+
+// Use in defineProtectedRoute
+export default defineProtectedRoute([clioProvider], async (event) => {
+  // TypeScript knows about all possible instance keys
+  const instanceKey = event.context.h3OAuthKitInstances.clio; // 'smithlaw' | 'johnsonlegal' | 'LOAG'
+  const tokens = event.context.h3OAuthKit[`clio:${instanceKey}`]; // Fully typed
+});
+```
+
 ---
 
 ### `handleOAuthLogout(providers, options?, event?)`
@@ -399,14 +505,19 @@ When using scoped providers (multi-tenant), the keys follow a specific format:
 ### Context Access Patterns
 
 ```ts
-// Global providers - use dot notation
+// Tokens - Global providers use dot notation
 event.context.h3OAuthKit.azure.access_token;
 event.context.h3OAuthKit.clio.access_token;
 
-// Scoped providers - use bracket notation (because of the colon)
+// Tokens - Scoped providers use bracket notation (because of the colon)
 event.context.h3OAuthKit['azure:tenant-a'].access_token;
 event.context.h3OAuthKit['clio:smithlaw'].access_token;
 event.context.h3OAuthKit['intuit:company-123'].access_token;
+
+// Instance Keys - Access resolved instance keys (helpful for dynamic resolution)
+event.context.h3OAuthKitInstances.azure; // undefined | string
+event.context.h3OAuthKitInstances.clio; // undefined | string (typed when using withInstanceKeys)
+event.context.h3OAuthKitInstances.intuit; // undefined | string
 ```
 
 ### Cookie Names
