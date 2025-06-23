@@ -307,7 +307,7 @@ import {
 } from '@sasha-milenkovic/h3-oauth-kit';
 import { getRouterParams, createError } from 'h3';
 
-const getClioAccountIds = () => ['811014901', '12345', '810204859'];
+const getClioAccountIds = () => ['123', '12345', '123456'];
 const isValidClioAccountId = (id: string) => getClioAccountIds().includes(id);
 
 export default defineProtectedRoute(
@@ -335,7 +335,7 @@ export default defineProtectedRoute(
   ],
   async (event) => {
     // ✨ NEW: Access the typed instance key directly from context!
-    const clioId = event.context.h3OAuthKitInstances.clio; // Type: "811014901" | "12345" | "810204859"
+    const clioId = event.context.h3OAuthKitInstances.clio; // Type: "123" | "12345" | "123456"
 
     // No need to re-extract from router params!
     if (!clioId) {
@@ -347,7 +347,7 @@ export default defineProtectedRoute(
     const azureTokens = event.context.h3OAuthKit.azure;
 
     return {
-      clioId, // Fully typed as "811014901" | "12345" | "810204859"
+      clioId, // Fully typed as "123" | "12345" | "123456"
       hasClioTokens: !!clioTokens,
       hasAzureTokens: !!azureTokens,
     };
@@ -372,7 +372,7 @@ event.context.h3OAuthKitInstances.azure; // undefined (no instance key)
 event.context.h3OAuthKitInstances.clio; // "smithlaw" (from { provider: "clio", instanceKey: "smithlaw" })
 
 // For scoped providers with withInstanceKeys resolver
-event.context.h3OAuthKitInstances.clio; // "811014901" | "12345" | "810204859" (typed union from resolver)
+event.context.h3OAuthKitInstances.clio; // "123" | "12345" | "123456" (typed union from resolver)
 ```
 
 ---
