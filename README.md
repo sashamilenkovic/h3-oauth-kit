@@ -6,7 +6,7 @@
 A type-safe, multi-provider OAuth 2.0 toolkit for [H3](https://github.com/unjs/h3) apps.
 Handles login, callback, token refresh, and protected route middleware — all with automatic cookie storage and typed provider extensions.
 
-> ⚠️ **This package is experimental and currently supports a small number of providers (`azure`, `clio`, `intuit`).**
+> ⚠️ **This package is experimental and currently supports a small number of providers (`azure`, `clio`, `intuit`, `opencase`).**
 > It's built for internal use but is published publicly for ease of consumption and iteration.
 
 ---
