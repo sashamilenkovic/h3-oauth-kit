@@ -1,6 +1,6 @@
 import type { H3Event } from 'h3';
 
-export type OAuthProvider = 'azure' | 'clio' | 'intuit';
+export type OAuthProvider = 'azure' | 'clio' | 'intuit' | 'mycase';
 
 export type RequiredPick<T, K extends keyof T> = {
   [P in K]-?: NonNullable<T[P]>;
@@ -20,7 +20,10 @@ export interface BaseOAuthProviderConfig {
 export type OAuthProviderConfig =
   | AzureOAuthProviderConfig
   | ClioOAuthProviderConfig
-  | IntuitOAuthProviderConfig;
+  | IntuitOAuthProviderConfig
+  | MyCaseOAuthProviderConfig;
+
+export interface MyCaseOAuthProviderConfig extends BaseOAuthProviderConfig {}
 
 export interface AzureOAuthProviderConfig extends BaseOAuthProviderConfig {
   tenantId: string;
@@ -63,6 +66,10 @@ export type IntuitAuthTokens = OAuthTokenBase & {
   x_refresh_token_expires_in: number;
 };
 
+export type MyCaseAuthTokens = OAuthTokenBase & {
+  client_id: string;
+};
+
 export type OAuthTokens = AzureAuthTokens | ClioAuthTokens | IntuitAuthTokens;
 
 export interface AzureCookies {
@@ -78,6 +85,13 @@ export interface ClioCookies {
   clio_refresh_token: string;
   clio_access_token_expires_at: string;
   clio_client_id: string;
+}
+
+export interface MyCaseCookies {
+  mycase_access_token: string;
+  mycase_refresh_token: string;
+  mycase_access_token_expires_at: string;
+  mycase_client_id: string;
 }
 
 export interface IntuitCookies {
@@ -110,10 +124,18 @@ export interface AzureRefreshTokenResponse {
   ext_expires_in: number;
 }
 
+export interface MyCaseRefreshTokenResponse {
+  access_token: string;
+  refresh_token: string;
+  token_type: 'bearer';
+  expires_in: number;
+}
+
 export type OAuthProviderTokenMap = {
   azure: AzureAuthTokens;
   clio: ClioAuthTokens;
   intuit: IntuitAuthTokens;
+  mycase: MyCaseAuthTokens;
 };
 
 // Add a type to help with token assignment
@@ -133,12 +155,14 @@ export type OAuthProviderConfigMap = {
   azure: AzureOAuthProviderConfig;
   clio: ClioOAuthProviderConfig;
   intuit: IntuitOAuthProviderConfig;
+  mycase: MyCaseOAuthProviderConfig;
 };
 
 export type RefreshTokenResponseMap = {
   azure: AzureRefreshTokenResponse;
   clio: ClioRefreshTokenResponse;
   intuit: IntuitRefreshTokenResponse;
+  mycase: MyCaseRefreshTokenResponse;
 };
 
 export type RefreshTokenResponse<T extends OAuthProvider> =
@@ -240,10 +264,13 @@ export interface IntuitOAuthCallbackQuery extends BaseOAuthCallbackQuery {
 
 export interface ClioOAuthCallbackQuery extends BaseOAuthCallbackQuery {}
 
+export interface MyCaseOAuthCallbackQuery extends BaseOAuthCallbackQuery {}
+
 export type OAuthCallbackQueryMap = {
   intuit: IntuitOAuthCallbackQuery;
   clio: ClioOAuthCallbackQuery;
   azure: AzureOAuthCallbackQuery;
+  mycase: MyCaseOAuthCallbackQuery;
 };
 
 export type OAuthCallbackQuery<P extends OAuthProvider> =
@@ -368,11 +395,14 @@ export interface InputClioOAuthProviderConfig
   extends Omit<ClioOAuthProviderConfig, 'encrypt' | 'decrypt'> {}
 export interface InputIntuitOAuthProviderConfig
   extends Omit<IntuitOAuthProviderConfig, 'encrypt' | 'decrypt'> {}
+export interface InputMyCaseOAuthProviderConfig
+  extends Omit<MyCaseOAuthProviderConfig, 'encrypt' | 'decrypt'> {}
 
 export type InputOAuthProviderConfigMap = {
   azure: InputAzureOAuthProviderConfig;
   clio: InputClioOAuthProviderConfig;
   intuit: InputIntuitOAuthProviderConfig;
+  mycase: InputMyCaseOAuthProviderConfig;
 };
 
 // Type for resolved instance keys passed to the handler

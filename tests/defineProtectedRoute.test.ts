@@ -63,7 +63,7 @@ describe('defineProtectedRoute (multi-provider)', () => {
     const event = createMockEvent();
 
     mockTokensValid.mockImplementation(
-      async <P extends 'clio' | 'azure' | 'intuit'>(
+      async <P extends 'clio' | 'azure' | 'intuit' | 'mycase'>(
         _event: unknown,
         provider: P,
         instanceKey?: string,
@@ -750,7 +750,7 @@ describe('defineProtectedRoute (multi-provider)', () => {
 
     // Mock token validation for different provider configurations
     mockTokensValid.mockImplementation(
-      async <P extends 'clio' | 'azure' | 'intuit'>(
+      async <P extends 'clio' | 'azure' | 'intuit' | 'mycase'>(
         _event: unknown,
         provider: P,
         instanceKey?: string,

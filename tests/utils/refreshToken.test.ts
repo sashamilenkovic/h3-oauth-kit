@@ -49,6 +49,16 @@ const mockConfigs: OAuthProviderConfigMap = {
     encrypt: async () => '',
     decrypt: async () => '',
   },
+  mycase: {
+    clientId: 'id',
+    clientSecret: 'secret',
+    authorizeEndpoint: '',
+    tokenEndpoint: 'https://example.com/token',
+    redirectUri: '',
+    scopes: [],
+    encrypt: async () => '',
+    decrypt: async () => '',
+  },
 };
 
 const testCases = [
@@ -79,6 +89,15 @@ const testCases = [
       token_type: 'bearer',
       expires_in: 3600,
       x_refresh_token_expires_in: 86400,
+    },
+  },
+  {
+    provider: 'mycase' as const,
+    response: {
+      access_token: 'abc',
+      refresh_token: 'ref4',
+      token_type: 'bearer',
+      expires_in: 3600,
     },
   },
 ];

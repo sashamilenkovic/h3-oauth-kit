@@ -44,4 +44,12 @@ export const providerConfig: {
     callbackQueryFields: ['realmId'],
     validateRefreshTokenExpiry: true,
   },
+  mycase: {
+    baseCookieFields: [
+      'access_token',
+      'refresh_token',
+      'access_token_expires_at',
+    ],
+    providerSpecificFields: [],
+  },
 };
