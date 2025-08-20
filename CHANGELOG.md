@@ -1,3 +1,10 @@
+# [0.11.0](https://github.com/sashamilenkovic/h3-oauth-kit/compare/v0.10.0...v0.11.0) (2025-08-20)
+
+
+### Features
+
+* adds opencase as provider option ([bf14a64](https://github.com/sashamilenkovic/h3-oauth-kit/commit/bf14a64f8973c4b413d2412722190fdfe7201621))
+
 # [0.10.0](https://github.com/sashamilenkovic/h3-oauth-kit/compare/v0.9.1...v0.10.0) (2025-06-23)
 
 
