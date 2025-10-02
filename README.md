@@ -6,8 +6,9 @@
 A type-safe, multi-provider OAuth 2.0 toolkit for [H3](https://github.com/unjs/h3) apps.
 Handles login, callback, token refresh, and protected route middleware — all with automatic cookie storage and typed provider extensions.
 
-> ⚠️ **This package is experimental and currently supports a small number of providers (`azure`, `clio`, `intuit`, `opencase`).**
-> It's built for internal use but is published publicly for ease of consumption and iteration.
+> **Built-in providers:** `azure`, `clio`, `intuit`, `mycase`  
+> **Custom providers:** Add support for any OAuth 2.0 provider (Google, GitHub, Facebook, etc.) with full type safety via module augmentation.  
+> See [CUSTOM_PROVIDERS.md](./CUSTOM_PROVIDERS.md) for details.
 
 ---
 
@@ -18,6 +19,8 @@ Handles login, callback, token refresh, and protected route middleware — all w
 - 🔁 Automatic token refresh on protected routes
 - 🧠 State validation & metadata preservation
 - 🛠️ Utility-first API with full TypeScript safety
+- 🎨 Extensible type system for custom OAuth providers
+- 🏢 Multi-tenant / multi-instance support
 
 ---
 
@@ -57,7 +60,44 @@ You can generate a key using Node.js:
 crypto.randomBytes(32).toString('hex');
 ```
 
-⚠️ H3_OAUTH_ENCRYPTION_KEY is required. If it’s missing or invalid, the package will throw an error at runtime.
+⚠️ H3_OAUTH_ENCRYPTION_KEY is required. If it's missing or invalid, the package will throw an error at runtime.
+
+---
+
+## Custom OAuth Providers
+
+**NEW in v0.12.0!** Add support for any OAuth 2.0 provider with full type safety.
+
+```typescript
+// types/h3-oauth-kit.d.ts
+declare module '@sasha-milenkovic/h3-oauth-kit' {
+  interface CustomOAuthProviders {
+    google: 'google';
+  }
+  interface CustomProviderTokenMap {
+    google: GoogleAuthTokens;
+  }
+  // ... other type maps
+}
+
+// server/plugins/oauthProviders.ts
+registerOAuthProvider('google', {
+  clientId: 'YOUR_CLIENT_ID',
+  clientSecret: 'YOUR_CLIENT_SECRET',
+  authorizeEndpoint: 'https://accounts.google.com/o/oauth2/v2/auth',
+  tokenEndpoint: 'https://oauth2.googleapis.com/token',
+  redirectUri: 'http://localhost:3000/api/auth/google/callback',
+  scopes: ['openid', 'email', 'profile'],
+});
+
+// Use exactly like built-in providers - no `as any` needed!
+export default defineProtectedRoute(['google'], async (event) => {
+  const token = event.context.h3OAuthKit.google.access_token;
+  // Full type safety!
+});
+```
+
+📖 **[Read the full Custom Providers guide](./CUSTOM_PROVIDERS.md)** for Google, GitHub, Facebook, and more.
 
 ---
 

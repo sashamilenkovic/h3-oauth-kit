@@ -1,6 +1,16 @@
 import type { H3Event } from 'h3';
 
-export type OAuthProvider = 'azure' | 'clio' | 'intuit' | 'mycase';
+// Base known providers
+export type KnownOAuthProvider = 'azure' | 'clio' | 'intuit' | 'mycase';
+
+// Allow module augmentation for custom providers
+export interface CustomOAuthProviders {}
+
+// Combined type that includes both known and custom providers
+export type OAuthProvider =
+  | KnownOAuthProvider
+  | keyof CustomOAuthProviders
+  | (string & {});
 
 export type RequiredPick<T, K extends keyof T> = {
   [P in K]-?: NonNullable<T[P]>;
@@ -21,7 +31,8 @@ export type OAuthProviderConfig =
   | AzureOAuthProviderConfig
   | ClioOAuthProviderConfig
   | IntuitOAuthProviderConfig
-  | MyCaseOAuthProviderConfig;
+  | MyCaseOAuthProviderConfig
+  | GenericOAuthProviderConfig;
 
 export interface MyCaseOAuthProviderConfig extends BaseOAuthProviderConfig {}
 
@@ -33,6 +44,12 @@ export interface ClioOAuthProviderConfig extends BaseOAuthProviderConfig {}
 
 export interface IntuitOAuthProviderConfig extends BaseOAuthProviderConfig {
   environment: 'sandbox' | 'production';
+}
+
+// Generic provider config for custom OAuth providers (e.g., Google, GitHub, etc.)
+export interface GenericOAuthProviderConfig extends BaseOAuthProviderConfig {
+  // Custom providers can add additional fields via the config object
+  [key: string]: unknown;
 }
 
 export interface OAuthCodeExchangeInput {
@@ -70,7 +87,16 @@ export type MyCaseAuthTokens = OAuthTokenBase & {
   client_id: string;
 };
 
-export type OAuthTokens = AzureAuthTokens | ClioAuthTokens | IntuitAuthTokens;
+// Generic token type for custom OAuth providers
+export type GenericAuthTokens = OAuthTokenBase & {
+  [key: string]: unknown;
+};
+
+export type OAuthTokens =
+  | AzureAuthTokens
+  | ClioAuthTokens
+  | IntuitAuthTokens
+  | GenericAuthTokens;
 
 export interface AzureCookies {
   azure_access_token: string;
@@ -131,12 +157,35 @@ export interface MyCaseRefreshTokenResponse {
   expires_in: number;
 }
 
-export type OAuthProviderTokenMap = {
+// Generic refresh token response for custom providers
+export interface GenericRefreshTokenResponse {
+  access_token: string;
+  refresh_token?: string;
+  token_type: 'Bearer' | 'bearer';
+  expires_in: number;
+  [key: string]: unknown;
+}
+
+// Known provider token map
+type KnownProviderTokenMap = {
   azure: AzureAuthTokens;
   clio: ClioAuthTokens;
   intuit: IntuitAuthTokens;
   mycase: MyCaseAuthTokens;
 };
+
+// Custom provider token map (extensible via module augmentation)
+export interface CustomProviderTokenMap {}
+
+// Combined token map with fallback to generic for unknown providers
+export type OAuthProviderTokenMap = KnownProviderTokenMap &
+  CustomProviderTokenMap & {
+    [K in string]: K extends keyof KnownProviderTokenMap
+      ? KnownProviderTokenMap[K]
+      : K extends keyof CustomProviderTokenMap
+      ? CustomProviderTokenMap[K]
+      : GenericAuthTokens;
+  };
 
 // Add a type to help with token assignment
 export type ProviderToken<T extends OAuthProvider> = OAuthProviderTokenMap[T];
@@ -151,19 +200,47 @@ export type AzureTokenValidationResult = TokenValidationResult<'azure'>;
 export type ClioTokenValidationResult = TokenValidationResult<'clio'>;
 export type IntuitTokenValidationResult = TokenValidationResult<'intuit'>;
 
-export type OAuthProviderConfigMap = {
+// Known provider config map
+type KnownProviderConfigMap = {
   azure: AzureOAuthProviderConfig;
   clio: ClioOAuthProviderConfig;
   intuit: IntuitOAuthProviderConfig;
   mycase: MyCaseOAuthProviderConfig;
 };
 
-export type RefreshTokenResponseMap = {
+// Custom provider config map (extensible via module augmentation)
+export interface CustomProviderConfigMap {}
+
+// Combined config map with fallback to generic for unknown providers
+export type OAuthProviderConfigMap = KnownProviderConfigMap &
+  CustomProviderConfigMap & {
+    [K in string]: K extends keyof KnownProviderConfigMap
+      ? KnownProviderConfigMap[K]
+      : K extends keyof CustomProviderConfigMap
+      ? CustomProviderConfigMap[K]
+      : GenericOAuthProviderConfig;
+  };
+
+// Known refresh token response map
+type KnownRefreshTokenResponseMap = {
   azure: AzureRefreshTokenResponse;
   clio: ClioRefreshTokenResponse;
   intuit: IntuitRefreshTokenResponse;
   mycase: MyCaseRefreshTokenResponse;
 };
+
+// Custom refresh token response map (extensible via module augmentation)
+export interface CustomRefreshTokenResponseMap {}
+
+// Combined refresh token response map with fallback to generic
+export type RefreshTokenResponseMap = KnownRefreshTokenResponseMap &
+  CustomRefreshTokenResponseMap & {
+    [K in string]: K extends keyof KnownRefreshTokenResponseMap
+      ? KnownRefreshTokenResponseMap[K]
+      : K extends keyof CustomRefreshTokenResponseMap
+      ? CustomRefreshTokenResponseMap[K]
+      : GenericRefreshTokenResponse;
+  };
 
 export type RefreshTokenResponse<T extends OAuthProvider> =
   RefreshTokenResponseMap[T];
@@ -266,12 +343,29 @@ export interface ClioOAuthCallbackQuery extends BaseOAuthCallbackQuery {}
 
 export interface MyCaseOAuthCallbackQuery extends BaseOAuthCallbackQuery {}
 
-export type OAuthCallbackQueryMap = {
+// Generic callback query for custom providers
+export interface GenericOAuthCallbackQuery extends BaseOAuthCallbackQuery {}
+
+// Known callback query map
+type KnownCallbackQueryMap = {
   intuit: IntuitOAuthCallbackQuery;
   clio: ClioOAuthCallbackQuery;
   azure: AzureOAuthCallbackQuery;
   mycase: MyCaseOAuthCallbackQuery;
 };
+
+// Custom callback query map (extensible via module augmentation)
+export interface CustomCallbackQueryMap {}
+
+// Combined callback query map with fallback to generic
+export type OAuthCallbackQueryMap = KnownCallbackQueryMap &
+  CustomCallbackQueryMap & {
+    [K in string]: K extends keyof KnownCallbackQueryMap
+      ? KnownCallbackQueryMap[K]
+      : K extends keyof CustomCallbackQueryMap
+      ? CustomCallbackQueryMap[K]
+      : GenericOAuthCallbackQuery;
+  };
 
 export type OAuthCallbackQuery<P extends OAuthProvider> =
   OAuthCallbackQueryMap[P];
@@ -397,13 +491,29 @@ export interface InputIntuitOAuthProviderConfig
   extends Omit<IntuitOAuthProviderConfig, 'encrypt' | 'decrypt'> {}
 export interface InputMyCaseOAuthProviderConfig
   extends Omit<MyCaseOAuthProviderConfig, 'encrypt' | 'decrypt'> {}
+export interface InputGenericOAuthProviderConfig
+  extends Omit<GenericOAuthProviderConfig, 'encrypt' | 'decrypt'> {}
 
-export type InputOAuthProviderConfigMap = {
+// Known input config map
+type KnownInputProviderConfigMap = {
   azure: InputAzureOAuthProviderConfig;
   clio: InputClioOAuthProviderConfig;
   intuit: InputIntuitOAuthProviderConfig;
   mycase: InputMyCaseOAuthProviderConfig;
 };
+
+// Custom input config map (extensible via module augmentation)
+export interface CustomInputProviderConfigMap {}
+
+// Combined input config map with fallback to generic
+export type InputOAuthProviderConfigMap = KnownInputProviderConfigMap &
+  CustomInputProviderConfigMap & {
+    [K in string]: K extends keyof KnownInputProviderConfigMap
+      ? KnownInputProviderConfigMap[K]
+      : K extends keyof CustomInputProviderConfigMap
+      ? CustomInputProviderConfigMap[K]
+      : InputGenericOAuthProviderConfig;
+  };
 
 // Type for resolved instance keys passed to the handler
 export type ResolvedInstances<Defs extends (OAuthProvider | ScopedProvider)[]> =

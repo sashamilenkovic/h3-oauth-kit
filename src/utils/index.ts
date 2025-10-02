@@ -16,7 +16,7 @@ import type {
 } from '../types';
 
 import { setCookie, getCookie, deleteCookie, getQuery, createError } from 'h3';
-import { providerConfig } from '../providerConfig';
+import { getProviderConfig } from '../providerConfig';
 import { ofetch } from 'ofetch';
 import { getOAuthProviderConfig } from '..';
 
@@ -88,7 +88,7 @@ export async function setProviderCookies<P extends OAuthProvider>(
     let refreshTokenMaxAge = 30 * 24 * 60 * 60; // Default: 30 days
 
     if (
-      providerConfig[provider].validateRefreshTokenExpiry &&
+      getProviderConfig(provider).validateRefreshTokenExpiry &&
       hasXRefreshTokenExpiresIn(tokens)
     ) {
       refreshTokenMaxAge = tokens.x_refresh_token_expires_in;
@@ -548,7 +548,7 @@ export function parseOAuthCallbackQuery<P extends OAuthProvider>(
   }) as BaseOAuthCallbackQuery;
 
   const providerSpecificFields =
-    providerConfig[provider].callbackQueryFields ?? [];
+    getProviderConfig(provider).callbackQueryFields ?? [];
 
   const extras: Record<string, string> = {};
 
@@ -709,7 +709,7 @@ export async function oAuthTokensAreValid<P extends OAuthProvider>(
   };
 
   // Optionally validate refresh token expiry
-  if (providerConfig[provider].validateRefreshTokenExpiry) {
+  if (getProviderConfig(provider).validateRefreshTokenExpiry) {
     const refreshExpiresAt = getCookie(
       event,
       `${providerKey}_refresh_token_expires_at`,
@@ -782,7 +782,7 @@ export function normalizeRefreshedToken<P extends OAuthProvider>(
   refreshed: RefreshTokenResponse<P>,
   previous: OAuthProviderTokenMap[P],
 ): OAuthProviderTokenMap[P] {
-  const keysToPreserve = providerConfig[provider].providerSpecificFields;
+  const keysToPreserve = getProviderConfig(provider).providerSpecificFields;
 
   const preserved = preserveFields(
     provider,
@@ -995,11 +995,11 @@ export function getProviderCookieKeys(
 ): string[] {
   const providerKey = instanceKey ? `${provider}:${instanceKey}` : provider;
 
-  const base = providerConfig[provider].baseCookieFields.map(
+  const base = getProviderConfig(provider).baseCookieFields.map(
     (field) => `${providerKey}_${field}`,
   );
 
-  const specific = providerConfig[provider].providerSpecificFields.map(
+  const specific = getProviderConfig(provider).providerSpecificFields.map(
     (field) => {
       const rawKey =
         typeof field === 'string'
@@ -1032,7 +1032,7 @@ export function getProviderCookiePatterns(provider: OAuthProvider): RegExp[] {
   const patterns: RegExp[] = [];
 
   // Base cookie patterns for both global and scoped instances
-  for (const field of providerConfig[provider].baseCookieFields) {
+  for (const field of getProviderConfig(provider).baseCookieFields) {
     const suffix = `_${field}`;
     // Global pattern: clio_access_token
     patterns.push(new RegExp(`^${provider}${suffix.replace('_', '\\_')}$`));
@@ -1043,7 +1043,7 @@ export function getProviderCookiePatterns(provider: OAuthProvider): RegExp[] {
   }
 
   // Provider-specific field patterns
-  for (const field of providerConfig[provider].providerSpecificFields) {
+  for (const field of getProviderConfig(provider).providerSpecificFields) {
     const cookieName =
       typeof field === 'string'
         ? `${provider}_${field}`
@@ -1094,7 +1094,7 @@ function resolveProviderFieldMeta<P extends OAuthProvider>(
   fieldKey: keyof OAuthProviderTokenMap[P];
   setter?: (raw: string) => string;
 }> {
-  const fields = providerConfig[provider].providerSpecificFields;
+  const fields = getProviderConfig(provider).providerSpecificFields;
 
   return fields.flatMap((field) => {
     if (typeof field === 'string') {

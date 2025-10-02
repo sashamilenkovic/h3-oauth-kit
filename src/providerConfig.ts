@@ -1,7 +1,12 @@
-import type { OAuthProvider, ProviderConfig } from './types';
+import type {
+  OAuthProvider,
+  ProviderConfig,
+  KnownOAuthProvider,
+} from './types';
 
-export const providerConfig: {
-  [P in OAuthProvider]: ProviderConfig<P>;
+// Known provider configurations
+const knownProviderConfig: {
+  [P in KnownOAuthProvider]: ProviderConfig<P>;
 } = {
   azure: {
     baseCookieFields: [
@@ -53,3 +58,32 @@ export const providerConfig: {
     providerSpecificFields: [],
   },
 };
+
+// Default configuration for custom/generic OAuth providers
+const defaultProviderConfig: ProviderConfig<any> = {
+  baseCookieFields: [
+    'access_token',
+    'refresh_token',
+    'access_token_expires_at',
+  ],
+  providerSpecificFields: [],
+};
+
+/**
+ * Gets the provider-specific configuration for cookie fields and callback query fields.
+ * Returns a default configuration for custom providers not explicitly defined.
+ *
+ * @param provider - The OAuth provider key
+ * @returns The provider configuration
+ */
+export function getProviderConfig<P extends OAuthProvider>(
+  provider: P,
+): ProviderConfig<P> {
+  return (
+    (knownProviderConfig as Record<string, ProviderConfig<any>>)[provider] ||
+    defaultProviderConfig
+  );
+}
+
+// Export the known provider config for backward compatibility
+export const providerConfig = knownProviderConfig;
