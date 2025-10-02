@@ -1,3 +1,10 @@
+# [0.12.0](https://github.com/sashamilenkovic/h3-oauth-kit/compare/v0.11.0...v0.12.0) (2025-10-02)
+
+
+### Features
+
+* adds generics for providers ([28aa639](https://github.com/sashamilenkovic/h3-oauth-kit/commit/28aa639ee80e6d187a06ddc11302dead2b5f92d5))
+
 # [0.11.0](https://github.com/sashamilenkovic/h3-oauth-kit/compare/v0.10.0...v0.11.0) (2025-08-20)
 
 
