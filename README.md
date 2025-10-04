@@ -3,8 +3,8 @@
 [![codecov](https://codecov.io/github/sashamilenkovic/h3-oauth-kit/graph/badge.svg?token=Y4JAJQWYCQ)](https://codecov.io/github/sashamilenkovic/h3-oauth-kit)
 ![Run Vitest](https://github.com/sashamilenkovic/h3-oauth-kit/actions/workflows/ci.yml/badge.svg)
 
-A type-safe, multi-provider OAuth 2.0 toolkit for [H3](https://github.com/unjs/h3) apps.
-Handles login, callback, token refresh, and protected route middleware — all with automatic cookie storage and typed provider extensions.
+A **cookie-based**, type-safe OAuth 2.0 toolkit for [H3](https://github.com/unjs/h3) apps.
+Handles login, callback, token refresh, and protected route middleware — all with automatic HTTP-only cookie storage and typed provider extensions.
 
 > **Built-in providers:** `azure`, `clio`, `intuit`, `mycase`  
 > **Custom providers:** Add support for any OAuth 2.0 provider (Google, GitHub, Facebook, etc.) with full type safety via module augmentation.  
@@ -12,10 +12,36 @@ Handles login, callback, token refresh, and protected route middleware — all w
 
 ---
 
+## Philosophy
+
+**h3-oauth-kit is designed around HTTP-only cookies** for token storage. This approach:
+
+- ✅ **Serverless-friendly** — No Redis, database, or external dependencies required
+- ✅ **Secure by default** — HTTP-only cookies prevent XSS attacks; refresh tokens are AES-256 encrypted
+- ✅ **Simple architecture** — Works out of the box with zero infrastructure setup
+- ✅ **Fast** — No network calls to retrieve tokens from external storage
+- ✅ **Multi-tenant ready** — Instance keys enable per-tenant OAuth configurations
+
+### When h3-oauth-kit Might Not Be the Right Fit
+
+This library stores OAuth tokens in HTTP-only cookies. If your use case requires:
+
+- ❌ Centralized token storage (Redis/database-backed sessions)
+- ❌ Tokens must never touch client devices (even encrypted)
+- ❌ Immediate token revocation across all devices/instances
+- ❌ Cross-device session sharing (one login, multiple devices)
+- ❌ Tokens larger than 4KB (browser cookie size limits)
+
+...you may need a different solution or should implement OAuth with custom session management.
+
+For the vast majority of H3/Nuxt applications, cookie-based storage is the ideal balance of security, simplicity, and performance.
+
+---
+
 ## Features
 
 - 🔐 OAuth 2.0 Authorization Code flow support
-- 🍞 Token storage via secure, HTTP-only cookies
+- 🍪 Secure HTTP-only cookie storage (AES-256 encrypted refresh tokens)
 - 🔁 Automatic token refresh on protected routes
 - 🧠 State validation & metadata preservation
 - 🛠️ Utility-first API with full TypeScript safety

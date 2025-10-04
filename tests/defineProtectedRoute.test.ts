@@ -56,6 +56,7 @@ describe('defineProtectedRoute (multi-provider)', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     registerOAuthProvider('clio', clioConfig);
+    registerOAuthProvider('clio', 'smithlaw', clioConfig);
     registerOAuthProvider('azure', 'dev', azureConfig);
   });
 
