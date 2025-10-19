@@ -665,8 +665,16 @@ export async function oAuthTokensAreValid<P extends OAuthProvider>(
     `${providerKey}_access_token_expires_at`,
   );
 
-  // If no refresh token, cannot recover
-  if (!refresh_token) {
+  // Check if we have a refresh token
+  const hasRefreshToken = !!refresh_token;
+
+  // If no access token at all, fail
+  if (!access_token) {
+    return false;
+  }
+
+  // If no expiry info, we can't validate - fail safe
+  if (!access_token_expires_at) {
     return false;
   }
 
@@ -674,33 +682,20 @@ export async function oAuthTokensAreValid<P extends OAuthProvider>(
     ? getOAuthProviderConfig(provider, instanceKey)
     : getOAuthProviderConfig(provider);
 
-  const decryptedRefreshToken = await config.decrypt(refresh_token);
-
-  // If access token is missing, but refresh token is present, trigger refresh
-  if (!access_token) {
-    return {
-      tokens: {
-        refresh_token: decryptedRefreshToken,
-        // other fields will be filled in after refresh
-      } as OAuthProviderTokenMap[P],
-      status: 'expired',
-    };
-  }
-
-  // If access_token_expires_at is missing, but refresh token is present, trigger refresh
-  if (!access_token_expires_at) {
-    return {
-      tokens: {
-        access_token,
-        refresh_token: decryptedRefreshToken,
-      } as OAuthProviderTokenMap[P],
-      status: 'expired',
-    };
-  }
-
   const expires_in = parseInt(access_token_expires_at, 10);
   const now = Math.floor(Date.now() / 1000);
   const isAccessTokenExpired = now >= expires_in;
+
+  // If access token is expired and we have no refresh token, fail
+  if (isAccessTokenExpired && !hasRefreshToken) {
+    return false;
+  }
+
+  // If we have a refresh token, decrypt it
+  let decryptedRefreshToken: string | undefined;
+  if (hasRefreshToken) {
+    decryptedRefreshToken = await config.decrypt(refresh_token);
+  }
 
   const base = {
     access_token,
@@ -708,8 +703,8 @@ export async function oAuthTokensAreValid<P extends OAuthProvider>(
     expires_in,
   };
 
-  // Optionally validate refresh token expiry
-  if (getProviderConfig(provider).validateRefreshTokenExpiry) {
+  // Optionally validate refresh token expiry (only if we have a refresh token)
+  if (hasRefreshToken && getProviderConfig(provider).validateRefreshTokenExpiry) {
     const refreshExpiresAt = getCookie(
       event,
       `${providerKey}_refresh_token_expires_at`,

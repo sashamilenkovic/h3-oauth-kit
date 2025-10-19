@@ -1,7 +1,7 @@
 import { getCookie, createError, setCookie, deleteCookie, getQuery, defineEventHandler, isError, sendRedirect } from 'h3';
 import { ofetch } from 'ofetch';
 
-const providerConfig = {
+const knownProviderConfig = {
   azure: {
     baseCookieFields: [
       "access_token",
@@ -40,8 +40,27 @@ const providerConfig = {
     ],
     callbackQueryFields: ["realmId"],
     validateRefreshTokenExpiry: true
+  },
+  mycase: {
+    baseCookieFields: [
+      "access_token",
+      "refresh_token",
+      "access_token_expires_at"
+    ],
+    providerSpecificFields: []
   }
 };
+const defaultProviderConfig = {
+  baseCookieFields: [
+    "access_token",
+    "refresh_token",
+    "access_token_expires_at"
+  ],
+  providerSpecificFields: []
+};
+function getProviderConfig(provider) {
+  return knownProviderConfig[provider] || defaultProviderConfig;
+}
 
 async function setProviderCookies(event, tokens, provider, options, instanceKey) {
   const providerKey = instanceKey ? `${provider}:${instanceKey}` : provider;
@@ -51,12 +70,13 @@ async function setProviderCookies(event, tokens, provider, options, instanceKey)
     sameSite: options?.sameSite ?? "lax",
     path: options?.path ?? "/"
   };
+  const expiresIn = tokens.expires_in;
   const cleanedAccessToken = tokens.access_token.startsWith("Bearer ") ? tokens.access_token.slice(7) : tokens.access_token;
   setCookie(event, `${providerKey}_access_token`, cleanedAccessToken, {
     ...base,
-    maxAge: tokens.expires_in
+    maxAge: expiresIn
   });
-  const expiry = Math.floor(Date.now() / 1e3) + tokens.expires_in;
+  const expiry = Math.floor(Date.now() / 1e3) + expiresIn;
   setCookie(
     event,
     `${providerKey}_access_token_expires_at`,
@@ -66,10 +86,15 @@ async function setProviderCookies(event, tokens, provider, options, instanceKey)
   const config = instanceKey ? getOAuthProviderConfig(provider, instanceKey) : getOAuthProviderConfig(provider);
   if (tokens.refresh_token) {
     const encryptedRefreshToken = await config.encrypt(tokens.refresh_token);
+    let refreshTokenMaxAge = 30 * 24 * 60 * 60;
+    if (getProviderConfig(provider).validateRefreshTokenExpiry && hasXRefreshTokenExpiresIn(tokens)) {
+      refreshTokenMaxAge = tokens.x_refresh_token_expires_in;
+    } else if (options?.refreshTokenMaxAge) {
+      refreshTokenMaxAge = options.refreshTokenMaxAge;
+    }
     setCookie(event, `${providerKey}_refresh_token`, encryptedRefreshToken, {
       ...base,
-      maxAge: 30 * 24 * 60 * 60
-      // 30 days
+      maxAge: refreshTokenMaxAge
     });
   }
   setProviderCookieFields(event, tokens, provider, providerKey, base);
@@ -243,7 +268,7 @@ function parseOAuthCallbackQuery(event, provider) {
     error: typeof query.error === "string" ? query.error : void 0,
     error_description: typeof query.error_description === "string" ? query.error_description : void 0
   });
-  const providerSpecificFields = providerConfig[provider].callbackQueryFields ?? [];
+  const providerSpecificFields = getProviderConfig(provider).callbackQueryFields ?? [];
   const extras = {};
   for (const field of providerSpecificFields) {
     const key = field;
@@ -257,11 +282,12 @@ function parseOAuthCallbackQuery(event, provider) {
     ...extras
   };
 }
-async function refreshToken(refreshTokenValue, providerConfig2, _provider) {
+async function refreshToken(refreshTokenValue, providerConfig, _provider) {
   const requestConfig = {
-    url: providerConfig2.tokenEndpoint,
+    url: providerConfig.tokenEndpoint,
     params: {
-      client_secret: providerConfig2.clientSecret,
+      client_id: providerConfig.clientId,
+      client_secret: providerConfig.clientSecret,
       refresh_token: refreshTokenValue,
       grant_type: "refresh_token"
     }
@@ -294,23 +320,37 @@ async function oAuthTokensAreValid(event, provider, instanceKey) {
     event,
     `${providerKey}_access_token_expires_at`
   );
-  if (!access_token || !refresh_token || !access_token_expires_at) return false;
+  const hasRefreshToken = !!refresh_token;
+  if (!access_token) {
+    return false;
+  }
+  if (!access_token_expires_at) {
+    return false;
+  }
   const config = instanceKey ? getOAuthProviderConfig(provider, instanceKey) : getOAuthProviderConfig(provider);
-  const encryptedRefreshToken = await config.decrypt(refresh_token);
   const expires_in = parseInt(access_token_expires_at, 10);
   const now = Math.floor(Date.now() / 1e3);
   const isAccessTokenExpired = now >= expires_in;
+  if (isAccessTokenExpired && !hasRefreshToken) {
+    return false;
+  }
+  let decryptedRefreshToken;
+  if (hasRefreshToken) {
+    decryptedRefreshToken = await config.decrypt(refresh_token);
+  }
   const base = {
     access_token,
-    refresh_token: encryptedRefreshToken,
+    refresh_token: decryptedRefreshToken,
     expires_in
   };
-  if (providerConfig[provider].validateRefreshTokenExpiry) {
+  if (hasRefreshToken && getProviderConfig(provider).validateRefreshTokenExpiry) {
     const refreshExpiresAt = getCookie(
       event,
       `${providerKey}_refresh_token_expires_at`
     );
-    if (!refreshExpiresAt) return false;
+    if (!refreshExpiresAt) {
+      return false;
+    }
     const refreshExpiry = parseInt(refreshExpiresAt, 10);
     if (isNaN(refreshExpiry) || now >= refreshExpiry) {
       return {
@@ -327,7 +367,9 @@ async function oAuthTokensAreValid(event, provider, instanceKey) {
     provider,
     providerKey
   );
-  if (additionalFields === false) return false;
+  if (additionalFields === false) {
+    return false;
+  }
   const tokens = {
     ...base,
     ...additionalFields
@@ -338,7 +380,7 @@ async function oAuthTokensAreValid(event, provider, instanceKey) {
   };
 }
 function normalizeRefreshedToken(provider, refreshed, previous) {
-  const keysToPreserve = providerConfig[provider].providerSpecificFields;
+  const keysToPreserve = getProviderConfig(provider).providerSpecificFields;
   const preserved = preserveFields(
     provider,
     previous,
@@ -399,10 +441,10 @@ function setProviderCookieFields(event, tokens, provider, providerKey, baseOptio
 }
 function getProviderCookieKeys(provider, instanceKey) {
   const providerKey = instanceKey ? `${provider}:${instanceKey}` : provider;
-  const base = providerConfig[provider].baseCookieFields.map(
+  const base = getProviderConfig(provider).baseCookieFields.map(
     (field) => `${providerKey}_${field}`
   );
-  const specific = providerConfig[provider].providerSpecificFields.map(
+  const specific = getProviderConfig(provider).providerSpecificFields.map(
     (field) => {
       const rawKey = typeof field === "string" ? `${provider}_${field}` : field.cookieName ?? `${provider}_${String(field.key)}`;
       return rawKey.replace(`${provider}_`, `${providerKey}_`);
@@ -411,7 +453,7 @@ function getProviderCookieKeys(provider, instanceKey) {
   return [...base, ...specific];
 }
 function resolveProviderFieldMeta(provider) {
-  const fields = providerConfig[provider].providerSpecificFields;
+  const fields = getProviderConfig(provider).providerSpecificFields;
   return fields.flatMap((field) => {
     if (typeof field === "string") {
       return [
@@ -444,18 +486,21 @@ function clearNonPreservedCookies(event, provider) {
   }
 }
 function discoverProviderInstance(event, provider) {
-  const globalKey = `${provider}_access_token`;
+  const globalKey = `${provider}_refresh_token`;
   if (getCookie(event, globalKey)) {
     return void 0;
   }
   const cookies = event.node.req.headers.cookie;
   if (!cookies) return void 0;
-  const cookiePattern = new RegExp(`${provider}:([^_]+)_access_token=`);
+  const cookiePattern = new RegExp(`${provider}:([^_]+)_refresh_token=`);
   const matches = cookies.match(cookiePattern);
   if (matches && matches[1]) {
     return matches[1];
   }
   return void 0;
+}
+function hasXRefreshTokenExpiresIn(obj) {
+  return typeof obj === "object" && obj !== null && "x_refresh_token_expires_in" in obj && typeof obj.x_refresh_token_expires_in === "number";
 }
 
 const IV_LENGTH = 16;
@@ -614,6 +659,20 @@ function handleOAuthCallback(provider, options, event) {
       } = parseProviderKey(parsedState.providerKey);
       const config = instanceKey ? getOAuthProviderConfig(provider, instanceKey) : getOAuthProviderConfig(provider);
       const rawTokens = await exchangeCodeForTokens(code, config, provider);
+      if (options?.instanceEquivalent) {
+        const isValid = await options.instanceEquivalent(
+          rawTokens,
+          evt,
+          provider,
+          instanceKey
+        );
+        if (!isValid) {
+          throw createError({
+            statusCode: 401,
+            statusMessage: "User validation failed after OAuth callback"
+          });
+        }
+      }
       if (!preserveInstance) {
         clearNonPreservedCookies(evt, provider);
       }
@@ -659,6 +718,7 @@ function defineProtectedRoute(providers, handler, options) {
   return defineEventHandler(async (event) => {
     const ctx = event.context;
     ctx.h3OAuthKit = {};
+    ctx.h3OAuthKitInstances = {};
     for (const def of providers) {
       const isScoped = typeof def !== "string";
       const provider = isScoped ? def.provider : def;
@@ -738,6 +798,8 @@ function defineProtectedRoute(providers, handler, options) {
           );
         }
         ctx.h3OAuthKit[providerKey] = tokens;
+        const baseProvider = isScoped ? def.provider : def;
+        ctx.h3OAuthKitInstances[baseProvider] = instanceKey;
       } catch (error) {
         if (options?.onAuthFailure) {
           const response = await options.onAuthFailure(
