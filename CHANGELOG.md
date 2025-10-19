@@ -1,3 +1,10 @@
+## [0.12.1](https://github.com/sashamilenkovic/h3-oauth-kit/compare/v0.12.0...v0.12.1) (2025-10-19)
+
+
+### Bug Fixes
+
+* make refresh tokens optional in oauth flow ([4fb63bf](https://github.com/sashamilenkovic/h3-oauth-kit/commit/4fb63bfb86b8bc441e814b2ac010d6d5a8e7d708))
+
 # [0.12.0](https://github.com/sashamilenkovic/h3-oauth-kit/compare/v0.11.0...v0.12.0) (2025-10-02)
 
 
