@@ -29,3 +29,6 @@ coverage/
 
 # MacOS and system files
 Thumbs.db
+
+# Version managers
+.tool-versions
