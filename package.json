@@ -58,7 +58,8 @@
     "ofetch": "^1.4.1"
   },
   "publishConfig": {
-    "registry": "https://registry.npmjs.org/"
+    "registry": "https://registry.npmjs.org/",
+    "access": "public"
   },
   "license": "MIT",
   "repository": {
