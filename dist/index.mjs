@@ -1,7 +1,7 @@
 import { getCookie, createError, setCookie, deleteCookie, getQuery, defineEventHandler, isError, sendRedirect } from 'h3';
 import { ofetch } from 'ofetch';
 
-const providerConfig = {
+const knownProviderConfig = {
   azure: {
     baseCookieFields: [
       "access_token",
@@ -40,9 +40,103 @@ const providerConfig = {
     ],
     callbackQueryFields: ["realmId"],
     validateRefreshTokenExpiry: true
+  },
+  mycase: {
+    baseCookieFields: [
+      "access_token",
+      "refresh_token",
+      "access_token_expires_at"
+    ],
+    providerSpecificFields: []
   }
 };
+const defaultProviderConfig = {
+  baseCookieFields: [
+    "access_token",
+    "refresh_token",
+    "access_token_expires_at"
+  ],
+  providerSpecificFields: []
+};
+function getProviderConfig(provider) {
+  return knownProviderConfig[provider] || defaultProviderConfig;
+}
 
+function generateCodeVerifier() {
+  const randomBytes = crypto.getRandomValues(new Uint8Array(32));
+  return base64UrlEncode(randomBytes);
+}
+async function generateCodeChallenge(codeVerifier) {
+  const encoder = new TextEncoder();
+  const data = encoder.encode(codeVerifier);
+  const hash = await crypto.subtle.digest("SHA-256", data);
+  return base64UrlEncode(new Uint8Array(hash));
+}
+function base64UrlEncode(buffer) {
+  const base64 = btoa(String.fromCharCode(...buffer));
+  return base64.replace(/\+/g, "-").replace(/\//g, "_").replace(/=/g, "");
+}
+
+async function fetchUserInfo(userInfoEndpoint, accessToken, _provider) {
+  if (!userInfoEndpoint) {
+    return void 0;
+  }
+  try {
+    const userInfo = await ofetch(
+      userInfoEndpoint,
+      {
+        headers: {
+          Authorization: `Bearer ${accessToken}`
+        }
+      }
+    );
+    return userInfo;
+  } catch (error) {
+    console.error(`Failed to fetch userInfo from ${userInfoEndpoint}:`, error);
+    return void 0;
+  }
+}
+function parseIDToken(idToken) {
+  if (!idToken) {
+    return void 0;
+  }
+  try {
+    const parts = idToken.split(".");
+    if (parts.length !== 3) {
+      console.error("Invalid ID token format: expected 3 parts");
+      return void 0;
+    }
+    const payload = parts[1];
+    const decoded = base64UrlDecode(payload);
+    const claims = JSON.parse(decoded);
+    if (!claims.iss || !claims.sub || !claims.aud || !claims.exp || !claims.iat) {
+      console.error("ID token missing required claims");
+      return void 0;
+    }
+    return claims;
+  } catch (error) {
+    console.error("Failed to parse ID token:", error);
+    return void 0;
+  }
+}
+function base64UrlDecode(base64Url) {
+  let base64 = base64Url.replace(/-/g, "+").replace(/_/g, "/");
+  const padding = base64.length % 4;
+  if (padding > 0) {
+    base64 += "=".repeat(4 - padding);
+  }
+  const decoded = atob(base64);
+  return decodeURIComponent(
+    decoded.split("").map((c) => "%" + ("00" + c.charCodeAt(0).toString(16)).slice(-2)).join("")
+  );
+}
+
+function shouldRefreshToken(tokens, thresholdSeconds) {
+  const now = Math.floor(Date.now() / 1e3);
+  const expiresAt = tokens.expires_in;
+  const timeUntilExpiry = expiresAt - now;
+  return timeUntilExpiry <= thresholdSeconds && timeUntilExpiry > 0;
+}
 async function setProviderCookies(event, tokens, provider, options, instanceKey) {
   const providerKey = instanceKey ? `${provider}:${instanceKey}` : provider;
   const base = {
@@ -51,12 +145,13 @@ async function setProviderCookies(event, tokens, provider, options, instanceKey)
     sameSite: options?.sameSite ?? "lax",
     path: options?.path ?? "/"
   };
+  const expiresIn = tokens.expires_in;
   const cleanedAccessToken = tokens.access_token.startsWith("Bearer ") ? tokens.access_token.slice(7) : tokens.access_token;
   setCookie(event, `${providerKey}_access_token`, cleanedAccessToken, {
     ...base,
-    maxAge: tokens.expires_in
+    maxAge: expiresIn
   });
-  const expiry = Math.floor(Date.now() / 1e3) + tokens.expires_in;
+  const expiry = Math.floor(Date.now() / 1e3) + expiresIn;
   setCookie(
     event,
     `${providerKey}_access_token_expires_at`,
@@ -66,10 +161,15 @@ async function setProviderCookies(event, tokens, provider, options, instanceKey)
   const config = instanceKey ? getOAuthProviderConfig(provider, instanceKey) : getOAuthProviderConfig(provider);
   if (tokens.refresh_token) {
     const encryptedRefreshToken = await config.encrypt(tokens.refresh_token);
+    let refreshTokenMaxAge = 30 * 24 * 60 * 60;
+    if (getProviderConfig(provider).validateRefreshTokenExpiry && hasXRefreshTokenExpiresIn(tokens)) {
+      refreshTokenMaxAge = tokens.x_refresh_token_expires_in;
+    } else if (options?.refreshTokenMaxAge) {
+      refreshTokenMaxAge = options.refreshTokenMaxAge;
+    }
     setCookie(event, `${providerKey}_refresh_token`, encryptedRefreshToken, {
       ...base,
-      maxAge: 30 * 24 * 60 * 60
-      // 30 days
+      maxAge: refreshTokenMaxAge
     });
   }
   setProviderCookieFields(event, tokens, provider, providerKey, base);
@@ -139,7 +239,9 @@ function buildAuthUrl({
   clientId,
   redirectUri,
   scopes,
-  state
+  state,
+  codeChallenge,
+  codeChallengeMethod
 }) {
   const url = new URL(authorizeEndpoint);
   url.searchParams.set("client_id", clientId);
@@ -147,6 +249,10 @@ function buildAuthUrl({
   url.searchParams.set("response_type", "code");
   url.searchParams.set("scope", scopes.join(" "));
   url.searchParams.set("state", state);
+  if (codeChallenge && codeChallengeMethod) {
+    url.searchParams.set("code_challenge", codeChallenge);
+    url.searchParams.set("code_challenge_method", codeChallengeMethod);
+  }
   return url.toString();
 }
 function parseProviderKey(providerKey, delimiter = ":") {
@@ -211,7 +317,7 @@ function verifyStateParam(event, parsedState) {
   }
   deleteCookie(event, cookieKey);
 }
-async function exchangeCodeForTokens(code, config, _provider) {
+async function exchangeCodeForTokens(code, config, _provider, codeVerifier) {
   const params = {
     client_id: config.clientId,
     client_secret: config.clientSecret,
@@ -221,6 +327,9 @@ async function exchangeCodeForTokens(code, config, _provider) {
   };
   if (config.scopes) {
     params.scope = config.scopes.join(" ");
+  }
+  if (codeVerifier) {
+    params.code_verifier = codeVerifier;
   }
   try {
     return await ofetch(config.tokenEndpoint, {
@@ -243,7 +352,7 @@ function parseOAuthCallbackQuery(event, provider) {
     error: typeof query.error === "string" ? query.error : void 0,
     error_description: typeof query.error_description === "string" ? query.error_description : void 0
   });
-  const providerSpecificFields = providerConfig[provider].callbackQueryFields ?? [];
+  const providerSpecificFields = getProviderConfig(provider).callbackQueryFields ?? [];
   const extras = {};
   for (const field of providerSpecificFields) {
     const key = field;
@@ -257,11 +366,12 @@ function parseOAuthCallbackQuery(event, provider) {
     ...extras
   };
 }
-async function refreshToken(refreshTokenValue, providerConfig2, _provider) {
+async function refreshToken(refreshTokenValue, providerConfig, _provider) {
   const requestConfig = {
-    url: providerConfig2.tokenEndpoint,
+    url: providerConfig.tokenEndpoint,
     params: {
-      client_secret: providerConfig2.clientSecret,
+      client_id: providerConfig.clientId,
+      client_secret: providerConfig.clientSecret,
       refresh_token: refreshTokenValue,
       grant_type: "refresh_token"
     }
@@ -294,23 +404,45 @@ async function oAuthTokensAreValid(event, provider, instanceKey) {
     event,
     `${providerKey}_access_token_expires_at`
   );
-  if (!access_token || !refresh_token || !access_token_expires_at) return false;
+  if (!refresh_token) {
+    return false;
+  }
   const config = instanceKey ? getOAuthProviderConfig(provider, instanceKey) : getOAuthProviderConfig(provider);
-  const encryptedRefreshToken = await config.decrypt(refresh_token);
+  const decryptedRefreshToken = await config.decrypt(refresh_token);
+  if (!access_token) {
+    return {
+      tokens: {
+        refresh_token: decryptedRefreshToken
+        // other fields will be filled in after refresh
+      },
+      status: "expired"
+    };
+  }
+  if (!access_token_expires_at) {
+    return {
+      tokens: {
+        access_token,
+        refresh_token: decryptedRefreshToken
+      },
+      status: "expired"
+    };
+  }
   const expires_in = parseInt(access_token_expires_at, 10);
   const now = Math.floor(Date.now() / 1e3);
   const isAccessTokenExpired = now >= expires_in;
   const base = {
     access_token,
-    refresh_token: encryptedRefreshToken,
+    refresh_token: decryptedRefreshToken,
     expires_in
   };
-  if (providerConfig[provider].validateRefreshTokenExpiry) {
+  if (getProviderConfig(provider).validateRefreshTokenExpiry) {
     const refreshExpiresAt = getCookie(
       event,
       `${providerKey}_refresh_token_expires_at`
     );
-    if (!refreshExpiresAt) return false;
+    if (!refreshExpiresAt) {
+      return false;
+    }
     const refreshExpiry = parseInt(refreshExpiresAt, 10);
     if (isNaN(refreshExpiry) || now >= refreshExpiry) {
       return {
@@ -327,7 +459,9 @@ async function oAuthTokensAreValid(event, provider, instanceKey) {
     provider,
     providerKey
   );
-  if (additionalFields === false) return false;
+  if (additionalFields === false) {
+    return false;
+  }
   const tokens = {
     ...base,
     ...additionalFields
@@ -338,7 +472,7 @@ async function oAuthTokensAreValid(event, provider, instanceKey) {
   };
 }
 function normalizeRefreshedToken(provider, refreshed, previous) {
-  const keysToPreserve = providerConfig[provider].providerSpecificFields;
+  const keysToPreserve = getProviderConfig(provider).providerSpecificFields;
   const preserved = preserveFields(
     provider,
     previous,
@@ -399,10 +533,10 @@ function setProviderCookieFields(event, tokens, provider, providerKey, baseOptio
 }
 function getProviderCookieKeys(provider, instanceKey) {
   const providerKey = instanceKey ? `${provider}:${instanceKey}` : provider;
-  const base = providerConfig[provider].baseCookieFields.map(
+  const base = getProviderConfig(provider).baseCookieFields.map(
     (field) => `${providerKey}_${field}`
   );
-  const specific = providerConfig[provider].providerSpecificFields.map(
+  const specific = getProviderConfig(provider).providerSpecificFields.map(
     (field) => {
       const rawKey = typeof field === "string" ? `${provider}_${field}` : field.cookieName ?? `${provider}_${String(field.key)}`;
       return rawKey.replace(`${provider}_`, `${providerKey}_`);
@@ -411,7 +545,7 @@ function getProviderCookieKeys(provider, instanceKey) {
   return [...base, ...specific];
 }
 function resolveProviderFieldMeta(provider) {
-  const fields = providerConfig[provider].providerSpecificFields;
+  const fields = getProviderConfig(provider).providerSpecificFields;
   return fields.flatMap((field) => {
     if (typeof field === "string") {
       return [
@@ -444,18 +578,21 @@ function clearNonPreservedCookies(event, provider) {
   }
 }
 function discoverProviderInstance(event, provider) {
-  const globalKey = `${provider}_access_token`;
+  const globalKey = `${provider}_refresh_token`;
   if (getCookie(event, globalKey)) {
     return void 0;
   }
   const cookies = event.node.req.headers.cookie;
   if (!cookies) return void 0;
-  const cookiePattern = new RegExp(`${provider}:([^_]+)_access_token=`);
+  const cookiePattern = new RegExp(`${provider}:([^_]+)_refresh_token=`);
   const matches = cookies.match(cookiePattern);
   if (matches && matches[1]) {
     return matches[1];
   }
   return void 0;
+}
+function hasXRefreshTokenExpiresIn(obj) {
+  return typeof obj === "object" && obj !== null && "x_refresh_token_expires_in" in obj && typeof obj.x_refresh_token_expires_in === "number";
 }
 
 const IV_LENGTH = 16;
@@ -574,12 +711,27 @@ function handleOAuthLogin(provider, instanceKey, optionsOrEvent, maybeEvent) {
       options?.preserveInstance
     );
     const state = resolveState(evt, providerKey, options?.state);
+    const pkceParams = {};
+    if (config.usePKCE) {
+      const codeVerifier = generateCodeVerifier();
+      pkceParams.codeChallenge = await generateCodeChallenge(codeVerifier);
+      pkceParams.codeChallengeMethod = "S256";
+      setCookie(evt, `oauth_pkce_${providerKey}`, codeVerifier, {
+        httpOnly: true,
+        secure: true,
+        sameSite: "lax",
+        path: "/",
+        maxAge: 300
+        // 5 minutes (same as CSRF)
+      });
+    }
     const authUrl = buildAuthUrl({
       authorizeEndpoint: config.authorizeEndpoint,
       clientId: config.clientId,
       redirectUri: config.redirectUri,
       scopes: config.scopes,
-      state
+      state,
+      ...pkceParams
     });
     if (options?.redirect === true) {
       return sendRedirect(evt, authUrl, 302);
@@ -613,7 +765,38 @@ function handleOAuthCallback(provider, options, event) {
         preserveInstance
       } = parseProviderKey(parsedState.providerKey);
       const config = instanceKey ? getOAuthProviderConfig(provider, instanceKey) : getOAuthProviderConfig(provider);
-      const rawTokens = await exchangeCodeForTokens(code, config, provider);
+      let codeVerifier;
+      if (config.usePKCE) {
+        const cookieKey = `oauth_pkce_${parsedState.providerKey}`;
+        codeVerifier = getCookie(evt, cookieKey);
+        if (!codeVerifier) {
+          throw createError({
+            statusCode: 400,
+            statusMessage: "PKCE code_verifier missing from callback"
+          });
+        }
+        deleteCookie(evt, cookieKey);
+      }
+      const rawTokens = await exchangeCodeForTokens(
+        code,
+        config,
+        provider,
+        codeVerifier
+      );
+      if (options?.instanceEquivalent) {
+        const isValid = await options.instanceEquivalent(
+          rawTokens,
+          evt,
+          provider,
+          instanceKey
+        );
+        if (!isValid) {
+          throw createError({
+            statusCode: 401,
+            statusMessage: "User validation failed after OAuth callback"
+          });
+        }
+      }
       if (!preserveInstance) {
         clearNonPreservedCookies(evt, provider);
       }
@@ -624,6 +807,9 @@ function handleOAuthCallback(provider, options, event) {
         options?.cookieOptions,
         instanceKey
       );
+      if (config.hooks?.onLogin) {
+        await config.hooks.onLogin(evt, tokens, provider, instanceKey);
+      }
       const redirectTo = options?.redirectTo || "/";
       if (options?.redirect === false) {
         const callbackQueryData = parseOAuthCallbackQuery(evt, provider);
@@ -659,6 +845,7 @@ function defineProtectedRoute(providers, handler, options) {
   return defineEventHandler(async (event) => {
     const ctx = event.context;
     ctx.h3OAuthKit = {};
+    ctx.h3OAuthKitInstances = {};
     for (const def of providers) {
       const isScoped = typeof def !== "string";
       const provider = isScoped ? def.provider : def;
@@ -671,6 +858,7 @@ function defineProtectedRoute(providers, handler, options) {
             instanceKey = await def.instanceResolver(event);
           }
         }
+        const config = instanceKey ? getOAuthProviderConfig(provider, instanceKey) : getOAuthProviderConfig(provider);
         let providerKey = getProviderKey(provider, instanceKey);
         let result = await oAuthTokensAreValid(event, provider, instanceKey);
         if (!result && !isScoped) {
@@ -701,14 +889,18 @@ function defineProtectedRoute(providers, handler, options) {
           throw error;
         }
         let tokens = result.tokens;
-        if (result.status === "expired") {
-          const config = instanceKey ? getOAuthProviderConfig(provider, instanceKey) : getOAuthProviderConfig(provider);
+        const shouldRefresh = result.status === "expired" || result.status === "valid" && options?.refreshThreshold && shouldRefreshToken(tokens, options.refreshThreshold);
+        if (shouldRefresh) {
+          const oldTokens = tokens;
           const refreshed = await refreshToken(
             tokens.refresh_token,
             config,
             provider
           );
           if (!refreshed) {
+            if (config.hooks?.onTokenExpired) {
+              await config.hooks.onTokenExpired(event, provider, instanceKey);
+            }
             const error = createError({
               statusCode: 401,
               message: `Token refresh failed for "${providerKey}"`
@@ -736,8 +928,32 @@ function defineProtectedRoute(providers, handler, options) {
             options?.cookieOptions,
             instanceKey
           );
+          if (config.hooks?.onTokenRefresh) {
+            await config.hooks.onTokenRefresh(
+              event,
+              oldTokens,
+              tokens,
+              provider,
+              instanceKey
+            );
+          }
         }
-        ctx.h3OAuthKit[providerKey] = tokens;
+        const userInfo = await fetchUserInfo(
+          config.userInfoEndpoint,
+          tokens.access_token,
+          provider
+        );
+        let id_token_claims;
+        if ("id_token" in tokens && typeof tokens.id_token === "string") {
+          id_token_claims = parseIDToken(tokens.id_token);
+        }
+        ctx.h3OAuthKit[providerKey] = {
+          ...tokens,
+          userInfo,
+          id_token_claims
+        };
+        const baseProvider = isScoped ? def.provider : def;
+        ctx.h3OAuthKitInstances[baseProvider] = instanceKey;
       } catch (error) {
         if (options?.onAuthFailure) {
           const response = await options.onAuthFailure(
@@ -791,6 +1007,12 @@ function handleOAuthLogout(providers, options, event) {
   );
   const handler = async (evt) => {
     for (const { provider, instanceKey } of normalized) {
+      if (hasOAuthProviderConfig(provider, instanceKey)) {
+        const config = instanceKey ? getOAuthProviderConfig(provider, instanceKey) : getOAuthProviderConfig(provider);
+        if (config.hooks?.onLogout) {
+          await config.hooks.onLogout(evt, provider, instanceKey);
+        }
+      }
       deleteProviderCookies(evt, provider, instanceKey);
     }
     if (options?.redirectTo) {
@@ -828,5 +1050,67 @@ function withInstanceKeys(provider, instanceKeys, resolver) {
     __instanceKeys: instanceKeys
   };
 }
+async function revokeOAuthTokens(event, provider, options) {
+  const { revokeRemote = true, instanceKey } = options || {};
+  const hasConfig = hasOAuthProviderConfig(provider, instanceKey);
+  if (hasConfig && revokeRemote) {
+    const config = instanceKey ? getOAuthProviderConfig(provider, instanceKey) : getOAuthProviderConfig(provider);
+    if (config.revokeEndpoint) {
+      try {
+        const result = await oAuthTokensAreValid(event, provider, instanceKey);
+        if (result && result.tokens.access_token) {
+          await ofetch(config.revokeEndpoint, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/x-www-form-urlencoded"
+            },
+            body: new URLSearchParams({
+              token: result.tokens.access_token,
+              client_id: config.clientId,
+              client_secret: config.clientSecret
+            }).toString()
+          });
+        }
+      } catch (error) {
+        console.error(
+          `Failed to revoke token remotely for ${provider}:`,
+          error
+        );
+      }
+    }
+  }
+  deleteProviderCookies(event, provider, instanceKey);
+}
+async function checkTokenStatus(event, provider, instanceKey) {
+  const result = await oAuthTokensAreValid(event, provider, instanceKey);
+  if (!result) {
+    const status2 = {
+      isValid: false,
+      requiresRefresh: false,
+      hasRefreshToken: false,
+      provider
+    };
+    if (instanceKey) {
+      status2.instanceKey = instanceKey;
+    }
+    return status2;
+  }
+  const now = Math.floor(Date.now() / 1e3);
+  const expiresAt = result.tokens.expires_in;
+  const expiresIn = expiresAt - now;
+  const isExpired = result.status === "expired";
+  const status = {
+    isValid: !isExpired,
+    expiresIn: expiresIn > 0 ? expiresIn : 0,
+    expiresAt: new Date(expiresAt * 1e3).toISOString(),
+    requiresRefresh: isExpired,
+    hasRefreshToken: !!result.tokens.refresh_token,
+    provider
+  };
+  if (instanceKey) {
+    status.instanceKey = instanceKey;
+  }
+  return status;
+}
 
-export { defineProtectedRoute, deleteProviderCookies, getDiscoveredProviderTokens, getOAuthProviderConfig, handleOAuthCallback, handleOAuthLogin, handleOAuthLogout, hasOAuthProviderConfig, providerRegistry, typedInstanceResolver, useOAuthRegistry, withInstanceKeys };
+export { checkTokenStatus, defineProtectedRoute, deleteProviderCookies, getDiscoveredProviderTokens, getOAuthProviderConfig, handleOAuthCallback, handleOAuthLogin, handleOAuthLogout, hasOAuthProviderConfig, providerRegistry, revokeOAuthTokens, typedInstanceResolver, useOAuthRegistry, withInstanceKeys };

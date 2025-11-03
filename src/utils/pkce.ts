@@ -5,11 +5,11 @@
 
 /**
  * Generates a cryptographically random code verifier for PKCE.
- * 
+ *
  * The code verifier is a cryptographically random string using the characters
  * [A-Z] / [a-z] / [0-9] / "-" / "." / "_" / "~", with a minimum length of 43
  * characters and a maximum length of 128 characters.
- * 
+ *
  * @returns A base64url-encoded random string suitable for use as a code_verifier
  */
 export function generateCodeVerifier(): string {
@@ -19,9 +19,9 @@ export function generateCodeVerifier(): string {
 
 /**
  * Generates a code challenge from a code verifier using SHA-256.
- * 
+ *
  * code_challenge = BASE64URL(SHA256(ASCII(code_verifier)))
- * 
+ *
  * @param codeVerifier - The code verifier string
  * @returns A promise that resolves to the base64url-encoded SHA-256 hash
  */
@@ -36,10 +36,10 @@ export async function generateCodeChallenge(
 
 /**
  * Base64url-encodes a Uint8Array without padding.
- * 
+ *
  * This is required by the PKCE spec which uses base64url encoding
  * (RFC 4648 Section 5) without padding.
- * 
+ *
  * @param buffer - The bytes to encode
  * @returns A base64url-encoded string without padding
  */
@@ -47,4 +47,3 @@ function base64UrlEncode(buffer: Uint8Array): string {
   const base64 = btoa(String.fromCharCode(...buffer));
   return base64.replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
 }
-
