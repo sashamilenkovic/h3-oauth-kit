@@ -1,3 +1,10 @@
+# [1.2.0](https://github.com/sashamilenkovic/h3-oauth-kit/compare/v1.1.3...v1.2.0) (2025-11-03)
+
+
+### Features
+
+* add JWT validation with signature verification and JWKS caching ([fb61dce](https://github.com/sashamilenkovic/h3-oauth-kit/commit/fb61dceceb53c7ac96d98be53f733a582f13c5fa))
+
 ## [1.1.3](https://github.com/sashamilenkovic/h3-oauth-kit/compare/v1.1.2...v1.1.3) (2025-11-03)
 
 
