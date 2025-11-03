@@ -1,3 +1,10 @@
+## [0.13.1](https://github.com/sashamilenkovic/h3-oauth-kit/compare/v0.13.0...v0.13.1) (2025-11-03)
+
+
+### Bug Fixes
+
+* add public access to publishConfig for npm organization package ([e0c5379](https://github.com/sashamilenkovic/h3-oauth-kit/commit/e0c537922e5856a60bb464ac1bf90f271de789d1))
+
 # [0.13.0](https://github.com/sashamilenkovic/h3-oauth-kit/compare/v0.12.1...v0.13.0) (2025-11-03)
 
 
