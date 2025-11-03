@@ -1,3 +1,10 @@
+# [0.13.0](https://github.com/sashamilenkovic/h3-oauth-kit/compare/v0.12.1...v0.13.0) (2025-11-03)
+
+
+### Features
+
+* add token prefetching, revocation, and status API ([f2f1c16](https://github.com/sashamilenkovic/h3-oauth-kit/commit/f2f1c167de99f826a58ffac14d8e74eb206d86d9))
+
 ## [0.12.1](https://github.com/sashamilenkovic/h3-oauth-kit/compare/v0.12.0...v0.12.1) (2025-10-19)
 
 
