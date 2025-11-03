@@ -5,6 +5,7 @@ dist/
 .playground/
 .temp/
 .cache/
+.pnpm-store/
 
 # TypeScript
 *.tsbuildinfo
