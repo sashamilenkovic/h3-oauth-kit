@@ -1,3 +1,10 @@
+## [1.1.3](https://github.com/sashamilenkovic/h3-oauth-kit/compare/v1.1.2...v1.1.3) (2025-11-03)
+
+
+### Bug Fixes
+
+* disable codecov search to prevent uploading stale pnpm-store coverage ([ea326a3](https://github.com/sashamilenkovic/h3-oauth-kit/commit/ea326a335219b69c7afc67271b3174eb2635bde8))
+
 ## [1.1.2](https://github.com/sashamilenkovic/h3-oauth-kit/compare/v1.1.1...v1.1.2) (2025-11-03)
 
 
