@@ -6,6 +6,7 @@ export default defineBuildConfig({
     "./src/index",
     "./src/introspection",
     "./src/deviceFlow",
+    "./src/jwt",
   ],
   declaration: true,
   clean: true,

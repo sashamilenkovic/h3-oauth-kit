@@ -44,13 +44,14 @@ For the vast majority of H3/Nuxt applications, cookie-based storage is the ideal
 - 🤖 **NEW:** Client Credentials flow for machine-to-machine auth
 - 🔍 **NEW:** Token Introspection (RFC 7662) - validate token status
 - 📱 **NEW:** Device Authorization Flow (RFC 8628) - for CLI tools & IoT
+- 🔒 **NEW:** JWT Validation (RFC 7519) - decode, validate, verify signatures
 - 🍪 Secure HTTP-only cookie storage (AES-256 encrypted refresh tokens)
 - 🔁 Automatic token refresh on protected routes
 - 🧠 State validation & metadata preservation
 - 🛠️ Utility-first API with full TypeScript safety
 - 🎨 Extensible type system for custom OAuth providers
 - 🏢 Multi-tenant / multi-instance support
-- ⚡ In-memory token caching for client credentials
+- ⚡ In-memory caching (client credentials tokens + JWKS keys)
 - 🌲 **Tree-shakable** - import only what you need
 
 ---
@@ -81,6 +82,7 @@ import { initiateDeviceFlow } from '@milencode/h3-oauth-kit/device-flow';
 | `@milencode/h3-oauth-kit` | Core OAuth (login, callback, refresh, protected routes) | **Always** - this is the main package |
 | `@milencode/h3-oauth-kit/introspection` | Token introspection (RFC 7662) | When you need to validate tokens with the provider |
 | `@milencode/h3-oauth-kit/device-flow` | Device authorization (RFC 8628) | For CLI tools, TV apps, IoT devices |
+| `@milencode/h3-oauth-kit/jwt` | JWT validation (RFC 7519) | When you need to decode/validate JWTs locally |
 
 ### Example: Keeping Your Bundle Lean
 
@@ -1050,6 +1052,274 @@ registerOAuthProvider('azure', {
   // ... other config
   deviceAuthorizationEndpoint: 'https://login.microsoftonline.com/common/oauth2/v2.0/devicecode',
   tokenEndpoint: 'https://login.microsoftonline.com/common/oauth2/v2.0/token',
+});
+```
+
+---
+
+### JWT Validation 🌲
+
+**NEW!** Decode and validate JWT tokens locally without API calls (RFC 7519).
+
+**Tree-shakable:** Import from `@milencode/h3-oauth-kit/jwt`
+
+JWT validation lets you verify tokens locally, validate claims, and optionally verify signatures using JWKS. This is significantly faster than token introspection since it doesn't require network calls.
+
+#### Why JWT Validation?
+
+- ⚡ **Fast** - No network calls needed for validation
+- 🔒 **Secure** - Verify signatures with public keys (JWKS)
+- 📦 **Offline-capable** - Works without internet access
+- 🎯 **Flexible** - Validate specific claims (iss, aud, exp, etc.)
+
+---
+
+#### `decodeJWT(token)` 
+
+Decodes a JWT without any validation.
+
+**⚠️ Warning:** This does NOT validate the token! Use `validateJWT()` for secure validation.
+
+```typescript
+import { decodeJWT } from '@milencode/h3-oauth-kit/jwt';
+
+const decoded = decodeJWT(token);
+console.log('User ID:', decoded.payload.sub);
+console.log('Expires:', new Date(decoded.payload.exp! * 1000));
+console.log('Algorithm:', decoded.header.alg);
+```
+
+**Returns:**
+```typescript
+interface DecodedJWT {
+  header: {
+    alg: string;      // e.g., "RS256"
+    typ?: string;     // e.g., "JWT"
+    kid?: string;     // Key ID
+  };
+  payload: {
+    sub?: string;     // Subject
+    iss?: string;     // Issuer
+    aud?: string | string[];  // Audience
+    exp?: number;     // Expiration (seconds since epoch)
+    iat?: number;     // Issued at
+    nbf?: number;     // Not before
+    [key: string]: unknown;  // Custom claims
+  };
+  signature: string;
+}
+```
+
+---
+
+#### `getJWTPayload(token)`
+
+Convenience function that returns only the payload.
+
+```typescript
+import { getJWTPayload } from '@milencode/h3-oauth-kit/jwt';
+
+const payload = getJWTPayload(token);
+console.log('User:', payload.sub);
+console.log('Email:', payload.email);
+```
+
+---
+
+#### `validateJWT(token, options?)`
+
+Validates a JWT with comprehensive checks.
+
+**Features:**
+- ✅ Claims validation (exp, nbf, iat, iss, aud, sub)
+- ✅ Signature verification (using JWKS)
+- ✅ Clock tolerance for time-based checks
+- ✅ Custom validation logic
+- ✅ JWKS caching for performance
+
+**Basic Usage:**
+
+```typescript
+import { validateJWT } from '@milencode/h3-oauth-kit/jwt';
+
+const result = await validateJWT(token, {
+  issuer: 'https://login.microsoftonline.com',
+  audience: 'api://myapp',
+});
+
+if (result.valid) {
+  console.log('Valid token!', result.payload);
+} else {
+  console.error('Invalid:', result.error);
+  console.error('Code:', result.errorCode); // EXPIRED, INVALID_ISSUER, etc.
+}
+```
+
+**With Signature Verification:**
+
+```typescript
+const result = await validateJWT(token, {
+  issuer: 'https://accounts.google.com',
+  audience: 'my-client-id',
+  validateSignature: true,
+  jwksUri: 'https://www.googleapis.com/oauth2/v3/certs',
+});
+```
+
+**Validation Options:**
+
+```typescript
+interface JWTValidationOptions {
+  /** Expected issuer (iss claim) */
+  issuer?: string | string[];
+  /** Expected audience (aud claim) */
+  audience?: string | string[];
+  /** Expected subject (sub claim) */
+  subject?: string;
+  /** Clock tolerance in seconds (default: 0) */
+  clockTolerance?: number;
+  /** Validate signature (default: true if jwksUri provided) */
+  validateSignature?: boolean;
+  /** JWKS URI for public keys */
+  jwksUri?: string;
+  /** Allowed signing algorithms (default: ['RS256', 'ES256', ...]) */
+  algorithms?: string[];
+  /** Maximum token age in seconds */
+  maxTokenAge?: number;
+  /** Custom validation function */
+  customValidation?: (payload) => void | Promise<void>;
+}
+```
+
+**In a Protected API Route:**
+
+```typescript
+import { defineEventHandler, getHeader, createError } from 'h3';
+import { validateJWT } from '@milencode/h3-oauth-kit/jwt';
+
+export default defineEventHandler(async (event) => {
+  const authHeader = getHeader(event, 'authorization');
+  const token = authHeader?.split(' ')[1];
+  
+  if (!token) {
+    throw createError({ statusCode: 401, message: 'No token provided' });
+  }
+  
+  const result = await validateJWT(token, {
+    issuer: 'https://login.microsoftonline.com',
+    audience: 'api://myapp',
+    clockTolerance: 60, // 1 minute tolerance for clock skew
+    jwksUri: 'https://login.microsoftonline.com/common/discovery/v2.0/keys',
+    validateSignature: true,
+  });
+  
+  if (!result.valid) {
+    throw createError({
+      statusCode: 401,
+      message: `Invalid token: ${result.error}`,
+    });
+  }
+  
+  // Token is valid - use the payload
+  const userId = result.payload!.sub;
+  const email = result.payload!.email;
+  
+  return { userId, email };
+});
+```
+
+**Custom Validation:**
+
+```typescript
+const result = await validateJWT(token, {
+  issuer: 'https://provider.com',
+  customValidation: (payload) => {
+    // Require admin role
+    if (payload.role !== 'admin') {
+      throw new Error('Admin role required');
+    }
+    
+    // Check custom claim
+    if (!payload.organization_verified) {
+      throw new Error('Organization not verified');
+    }
+  },
+});
+```
+
+**Validation Result:**
+
+```typescript
+interface JWTValidationResult {
+  valid: boolean;
+  payload?: JWTPayload;  // If valid
+  error?: string;         // If invalid
+  errorCode?: 'EXPIRED' | 'NOT_YET_VALID' | 'INVALID_SIGNATURE' 
+    | 'INVALID_ISSUER' | 'INVALID_AUDIENCE' | 'INVALID_FORMAT'
+    | 'CUSTOM_VALIDATION_FAILED';
+}
+```
+
+**JWKS Cache Management:**
+
+```typescript
+import { clearJWKSCache, getJWKSCacheSize } from '@milencode/h3-oauth-kit/jwt';
+
+// JWKS keys are cached for 1 hour by default
+
+// Clear all cached JWKS
+clearJWKSCache();
+
+// Clear specific JWKS URI
+clearJWKSCache('https://login.microsoftonline.com/common/discovery/v2.0/keys');
+
+// Check cache size
+console.log('Cached JWKS entries:', getJWKSCacheSize());
+```
+
+**Real-World Example: API Gateway:**
+
+```typescript
+// server/middleware/auth.ts
+import { defineEventHandler, getHeader, createError } from 'h3';
+import { validateJWT } from '@milencode/h3-oauth-kit/jwt';
+
+export default defineEventHandler(async (event) => {
+  // Skip auth for public routes
+  if (event.path.startsWith('/api/public')) {
+    return;
+  }
+  
+  const token = getHeader(event, 'authorization')?.split(' ')[1];
+  
+  if (!token) {
+    throw createError({ statusCode: 401, message: 'Unauthorized' });
+  }
+  
+  const result = await validateJWT(token, {
+    issuer: ['https://accounts.google.com', 'https://login.microsoftonline.com'],
+    audience: 'api://myapp',
+    clockTolerance: 60,
+    validateSignature: true,
+    jwksUri: 
+      token.includes('google') 
+        ? 'https://www.googleapis.com/oauth2/v3/certs'
+        : 'https://login.microsoftonline.com/common/discovery/v2.0/keys',
+  });
+  
+  if (!result.valid) {
+    throw createError({
+      statusCode: 401,
+      message: `Token validation failed: ${result.error}`,
+    });
+  }
+  
+  // Attach user info to context
+  event.context.user = {
+    id: result.payload!.sub,
+    email: result.payload!.email,
+    name: result.payload!.name,
+  };
 });
 ```
 

@@ -866,3 +866,145 @@ export interface DeviceTokenPollOptions {
   /** Callback invoked on each poll attempt */
   onPoll?: (attempt: number, secondsElapsed: number) => void | Promise<void>;
 }
+
+// ============================================================
+// JWT Validation Types
+// ============================================================
+
+/**
+ * Standard JWT header fields
+ */
+export interface JWTHeader {
+  /** Algorithm used to sign the JWT (e.g., "RS256", "HS256") */
+  alg: string;
+  /** Token type, typically "JWT" */
+  typ?: string;
+  /** Key ID - hints which key was used to sign the JWT */
+  kid?: string;
+  /** Additional header fields */
+  [key: string]: unknown;
+}
+
+/**
+ * Standard JWT payload/claims
+ */
+export interface JWTPayload {
+  /** Issuer - who created and signed the token */
+  iss?: string;
+  /** Subject - who the token is about */
+  sub?: string;
+  /** Audience - who the token is intended for */
+  aud?: string | string[];
+  /** Expiration time (seconds since epoch) */
+  exp?: number;
+  /** Not before time (seconds since epoch) */
+  nbf?: number;
+  /** Issued at time (seconds since epoch) */
+  iat?: number;
+  /** JWT ID - unique identifier for the token */
+  jti?: string;
+  /** Additional claims */
+  [key: string]: unknown;
+}
+
+/**
+ * Decoded JWT with header and payload
+ */
+export interface DecodedJWT {
+  header: JWTHeader;
+  payload: JWTPayload;
+  signature: string;
+}
+
+/**
+ * Options for JWT validation
+ */
+export interface JWTValidationOptions {
+  /** Expected issuer (iss claim) - can be string or array */
+  issuer?: string | string[];
+  /** Expected audience (aud claim) - can be string or array */
+  audience?: string | string[];
+  /** Expected subject (sub claim) */
+  subject?: string;
+  /** Clock tolerance in seconds for time-based validations (default: 0) */
+  clockTolerance?: number;
+  /** Validate the JWT signature (default: true) */
+  validateSignature?: boolean;
+  /** JWKS URI to fetch public keys for signature verification */
+  jwksUri?: string;
+  /** Allowed signing algorithms (default: ['RS256', 'ES256']) */
+  algorithms?: string[];
+  /** Maximum token age in seconds (validates iat claim) */
+  maxTokenAge?: number;
+  /** Custom validation function for additional checks */
+  customValidation?: (payload: JWTPayload) => void | Promise<void>;
+}
+
+/**
+ * JSON Web Key (JWK) structure
+ */
+export interface JWK {
+  /** Key type (e.g., "RSA", "EC") */
+  kty: string;
+  /** Public key use (e.g., "sig" for signature) */
+  use?: string;
+  /** Key operations */
+  key_ops?: string[];
+  /** Algorithm intended for use with the key */
+  alg?: string;
+  /** Key ID */
+  kid?: string;
+  /** X.509 certificate chain */
+  x5c?: string[];
+  /** X.509 certificate SHA-1 thumbprint */
+  x5t?: string;
+  /** X.509 certificate SHA-256 thumbprint */
+  'x5t#S256'?: string;
+  
+  // RSA-specific fields
+  /** RSA modulus */
+  n?: string;
+  /** RSA exponent */
+  e?: string;
+  
+  // EC-specific fields
+  /** Elliptic curve */
+  crv?: string;
+  /** X coordinate */
+  x?: string;
+  /** Y coordinate */
+  y?: string;
+  
+  /** Additional fields */
+  [key: string]: unknown;
+}
+
+/**
+ * JSON Web Key Set (JWKS)
+ */
+export interface JWKS {
+  keys: JWK[];
+}
+
+/**
+ * JWT validation result
+ */
+export interface JWTValidationResult {
+  /** Whether the JWT is valid */
+  valid: boolean;
+  /** Decoded payload if valid */
+  payload?: JWTPayload;
+  /** Error message if invalid */
+  error?: string;
+  /** Error code for programmatic handling */
+  errorCode?: 'EXPIRED' | 'NOT_YET_VALID' | 'INVALID_SIGNATURE' | 'INVALID_ISSUER' | 'INVALID_AUDIENCE' | 'INVALID_FORMAT' | 'CUSTOM_VALIDATION_FAILED';
+}
+
+/**
+ * Cached JWKS entry
+ */
+export interface CachedJWKS {
+  jwks: JWKS;
+  cachedAt: number;
+  expiresAt: number;
+}

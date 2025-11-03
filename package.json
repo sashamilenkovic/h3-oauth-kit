@@ -15,6 +15,10 @@
     "./device-flow": {
       "import": "./dist/deviceFlow.mjs",
       "types": "./dist/deviceFlow.d.ts"
+    },
+    "./jwt": {
+      "import": "./dist/jwt.mjs",
+      "types": "./dist/jwt.d.ts"
     }
   },
   "main": "./dist/index.mjs",
