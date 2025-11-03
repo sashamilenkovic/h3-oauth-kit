@@ -41,12 +41,14 @@ For the vast majority of H3/Nuxt applications, cookie-based storage is the ideal
 ## Features
 
 - 🔐 OAuth 2.0 Authorization Code flow support
+- 🤖 **NEW:** Client Credentials flow for machine-to-machine auth
 - 🍪 Secure HTTP-only cookie storage (AES-256 encrypted refresh tokens)
 - 🔁 Automatic token refresh on protected routes
 - 🧠 State validation & metadata preservation
 - 🛠️ Utility-first API with full TypeScript safety
 - 🎨 Extensible type system for custom OAuth providers
 - 🏢 Multi-tenant / multi-instance support
+- ⚡ In-memory token caching for client credentials
 
 ---
 
@@ -561,6 +563,140 @@ export default defineEventHandler((event) => {
 
 💡 Supports query strings like:
 /api/auth/logout?providers=azure&providers=clio
+
+---
+
+### `getClientCredentialsToken(provider, options?)`
+
+**NEW!** Retrieves an access token using the OAuth 2.0 Client Credentials flow (RFC 6749 Section 4.4).
+
+This is for **machine-to-machine authentication** where no user is involved. Perfect for:
+- Backend services calling APIs
+- Scheduled jobs/cron tasks
+- CI/CD pipelines
+- Microservices authentication
+
+#### Features:
+- ✅ **Automatic caching**: Tokens are cached in memory until they expire
+- ✅ **Multi-tenant support**: Works with scoped provider configurations
+- ✅ **Custom scopes**: Override default scopes per request
+- ✅ **Zero user interaction**: Pure service-to-service auth
+
+#### Basic Usage:
+
+```ts
+import { getClientCredentialsToken } from '@milencode/h3-oauth-kit';
+
+// Get a token for calling Microsoft Graph API
+const token = await getClientCredentialsToken('azure', {
+  scopes: ['https://graph.microsoft.com/.default'],
+});
+
+// Use the token to make API calls
+const users = await $fetch('https://graph.microsoft.com/v1.0/users', {
+  headers: {
+    Authorization: `Bearer ${token.access_token}`,
+  },
+});
+```
+
+#### Multi-Tenant Example:
+
+```ts
+// Different tokens for different tenants
+const tenantAToken = await getClientCredentialsToken('azure', {
+  instanceKey: 'tenant-a',
+  scopes: ['api://myapp/.default'],
+});
+
+const tenantBToken = await getClientCredentialsToken('azure', {
+  instanceKey: 'tenant-b',
+  scopes: ['api://myapp/.default'],
+});
+```
+
+#### Background Job Example:
+
+```ts
+// server/cron/syncAccounting.ts
+import { getClientCredentialsToken } from '@milencode/h3-oauth-kit';
+
+export async function syncAccountingData() {
+  // Get token without any user context
+  const token = await getClientCredentialsToken('intuit', {
+    scopes: ['com.intuit.quickbooks.accounting'],
+  });
+
+  // Fetch invoices from QuickBooks
+  const invoices = await $fetch(
+    'https://quickbooks.api.intuit.com/v3/company/123/query?query=select * from Invoice',
+    {
+      headers: {
+        Authorization: `Bearer ${token.access_token}`,
+        Accept: 'application/json',
+      },
+    },
+  );
+
+  // Process invoices...
+  return { synced: invoices.length };
+}
+```
+
+#### Options:
+
+```ts
+interface ClientCredentialsOptions {
+  /** OAuth scopes to request. Overrides provider's default scopes */
+  scopes?: string[];
+  /** Force a new token even if cached token is valid */
+  forceRefresh?: boolean;
+  /** Instance key for multi-tenant configurations */
+  instanceKey?: string;
+}
+```
+
+#### Cache Management:
+
+```ts
+import {
+  clearClientCredentialsCache,
+  getClientCredentialsCacheSize,
+} from '@milencode/h3-oauth-kit';
+
+// Clear all cached tokens
+clearClientCredentialsCache();
+
+// Clear tokens for specific provider
+clearClientCredentialsCache('azure');
+
+// Clear tokens for specific provider instance
+clearClientCredentialsCache('azure', 'tenant-a');
+
+// Check cache size (useful for monitoring)
+const size = getClientCredentialsCacheSize();
+console.log(`Cached tokens: ${size}`);
+```
+
+#### How Caching Works:
+
+Tokens are cached in memory based on:
+1. Provider name (e.g., `azure`)
+2. Instance key (if multi-tenant)
+3. Requested scopes
+
+This means different scope combinations get separate cache entries, ensuring you always get the right token for your use case.
+
+Tokens are automatically refreshed when they expire (with a 60-second buffer to prevent edge cases).
+
+#### When to Use Client Credentials vs Authorization Code:
+
+| Use Client Credentials when... | Use Authorization Code when... |
+|--------------------------------|--------------------------------|
+| ✅ Backend service calling APIs | ✅ User needs to login |
+| ✅ Scheduled jobs/cron tasks | ✅ Accessing user-specific data |
+| ✅ No user context needed | ✅ OAuth requires user consent |
+| ✅ M2M (machine-to-machine) auth | ✅ User session management |
 
 ---
 

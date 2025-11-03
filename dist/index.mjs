@@ -131,6 +131,90 @@ function base64UrlDecode(base64Url) {
   );
 }
 
+const tokenCache = /* @__PURE__ */ new Map();
+function getCacheKey(provider, scopes, instanceKey) {
+  const scopeKey = scopes?.sort().join(",") || "default";
+  return instanceKey ? `${provider}:${instanceKey}:${scopeKey}` : `${provider}::${scopeKey}`;
+}
+function isCachedTokenValid(cached) {
+  const now = Date.now();
+  const bufferMs = 60 * 1e3;
+  return cached.expires_at > now + bufferMs;
+}
+async function getClientCredentialsToken(provider, options = {}) {
+  const { scopes, forceRefresh = false, instanceKey } = options;
+  const providerKey = instanceKey ? `${provider}:${instanceKey}` : provider;
+  const config = providerRegistry.get(providerKey);
+  if (!config) {
+    throw new Error(
+      `Provider "${providerKey}" is not registered. Call registerOAuthProvider() first.`
+    );
+  }
+  const requestScopes = scopes || config.scopes;
+  const cacheKey = getCacheKey(provider, requestScopes, instanceKey);
+  if (!forceRefresh) {
+    const cached = tokenCache.get(cacheKey);
+    if (cached && isCachedTokenValid(cached)) {
+      return {
+        access_token: cached.access_token,
+        token_type: cached.token_type,
+        expires_in: Math.floor((cached.expires_at - Date.now()) / 1e3),
+        scope: cached.scope
+      };
+    }
+  }
+  const tokenRequest = {
+    grant_type: "client_credentials",
+    client_id: config.clientId,
+    client_secret: config.clientSecret
+  };
+  if (requestScopes && requestScopes.length > 0) {
+    tokenRequest.scope = requestScopes.join(" ");
+  }
+  try {
+    const response = await ofetch(
+      config.tokenEndpoint,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/x-www-form-urlencoded",
+          Accept: "application/json"
+        },
+        body: new URLSearchParams(tokenRequest)
+      }
+    );
+    const expiresAt = Date.now() + response.expires_in * 1e3;
+    const cachedToken = {
+      access_token: response.access_token,
+      token_type: response.token_type,
+      expires_at: expiresAt,
+      scope: response.scope
+    };
+    tokenCache.set(cacheKey, cachedToken);
+    return response;
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : "Unknown error";
+    throw new Error(
+      `Failed to fetch client credentials token for "${providerKey}": ${errorMessage}`
+    );
+  }
+}
+function clearClientCredentialsCache(provider, instanceKey) {
+  if (!provider) {
+    tokenCache.clear();
+    return;
+  }
+  const prefix = instanceKey ? `${provider}:${instanceKey}:` : `${provider}::`;
+  for (const key of tokenCache.keys()) {
+    if (key.startsWith(prefix)) {
+      tokenCache.delete(key);
+    }
+  }
+}
+function getClientCredentialsCacheSize() {
+  return tokenCache.size;
+}
+
 function shouldRefreshToken(tokens, thresholdSeconds) {
   const now = Math.floor(Date.now() / 1e3);
   const expiresAt = tokens.expires_in;
@@ -1105,4 +1189,4 @@ async function checkTokenStatus(event, provider, instanceKey) {
   return status;
 }
 
-export { checkTokenStatus, defineProtectedRoute, deleteProviderCookies, getDiscoveredProviderTokens, getOAuthProviderConfig, handleOAuthCallback, handleOAuthLogin, handleOAuthLogout, hasOAuthProviderConfig, providerRegistry, revokeOAuthTokens, typedInstanceResolver, useOAuthRegistry, withInstanceKeys };
+export { checkTokenStatus, clearClientCredentialsCache, defineProtectedRoute, deleteProviderCookies, getClientCredentialsCacheSize, getClientCredentialsToken, getDiscoveredProviderTokens, getOAuthProviderConfig, handleOAuthCallback, handleOAuthLogin, handleOAuthLogout, hasOAuthProviderConfig, providerRegistry, revokeOAuthTokens, typedInstanceResolver, useOAuthRegistry, withInstanceKeys };

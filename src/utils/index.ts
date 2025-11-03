@@ -22,6 +22,11 @@ import { getOAuthProviderConfig } from '..';
 
 export { generateCodeVerifier, generateCodeChallenge } from './pkce';
 export { fetchUserInfo, parseIDToken, validateIDTokenClaims } from './oidc';
+export {
+  getClientCredentialsToken,
+  clearClientCredentialsCache,
+  getClientCredentialsCacheSize,
+} from './clientCredentials';
 
 /**
  * @internal

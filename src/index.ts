@@ -1169,4 +1169,11 @@ export async function checkTokenStatus<P extends OAuthProvider>(
   return status;
 }
 
+// Re-export client credentials utilities
+export {
+  getClientCredentialsToken,
+  clearClientCredentialsCache,
+  getClientCredentialsCacheSize,
+} from './utils/clientCredentials';
+
 export * from './types';

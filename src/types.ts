@@ -659,3 +659,54 @@ export interface TokenStatus {
   provider: OAuthProvider;
   instanceKey?: string;
 }
+
+// ============================================================
+// Client Credentials Flow Types (OAuth 2.0 Section 4.4)
+// ============================================================
+
+/**
+ * Client Credentials token request parameters
+ * Used for machine-to-machine authentication (no user involved)
+ */
+export interface ClientCredentialsTokenRequest {
+  grant_type: 'client_credentials';
+  client_id: string;
+  client_secret: string;
+  scope?: string;
+}
+
+/**
+ * Client Credentials token response
+ * Note: No refresh_token is typically issued for client credentials
+ */
+export interface ClientCredentialsTokenResponse {
+  access_token: string;
+  token_type: 'Bearer' | 'bearer';
+  expires_in: number;
+  scope?: string;
+  /** Some providers may include additional fields */
+  [key: string]: unknown;
+}
+
+/**
+ * Cached client credentials token with expiration info
+ * Used for in-memory caching to avoid unnecessary token requests
+ */
+export interface CachedClientCredentialsToken {
+  access_token: string;
+  token_type: 'Bearer' | 'bearer';
+  expires_at: number; // Unix timestamp (ms)
+  scope?: string;
+}
+
+/**
+ * Options for fetching client credentials tokens
+ */
+export interface ClientCredentialsOptions {
+  /** OAuth scopes to request. If not provided, uses provider's default scopes */
+  scopes?: string[];
+  /** Force a new token even if cached token is valid */
+  forceRefresh?: boolean;
+  /** Instance key for multi-tenant configurations */
+  instanceKey?: string;
+}
