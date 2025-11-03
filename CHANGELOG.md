@@ -1,3 +1,10 @@
+## [1.1.2](https://github.com/sashamilenkovic/h3-oauth-kit/compare/v1.1.1...v1.1.2) (2025-11-03)
+
+
+### Bug Fixes
+
+* explicitly specify coverage file path for codecov ([1fcca28](https://github.com/sashamilenkovic/h3-oauth-kit/commit/1fcca285fc281ed1b0161d16a2bc6282d5edd83b))
+
 ## [1.1.1](https://github.com/sashamilenkovic/h3-oauth-kit/compare/v1.1.0...v1.1.1) (2025-11-03)
 
 
