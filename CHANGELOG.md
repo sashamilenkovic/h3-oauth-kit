@@ -1,3 +1,15 @@
+# [1.0.0](https://github.com/sashamilenkovic/h3-oauth-kit/compare/v0.13.1...v1.0.0) (2025-11-03)
+
+
+### Features
+
+* add OAuth 2.0 Client Credentials flow for M2M authentication ([6bd0f44](https://github.com/sashamilenkovic/h3-oauth-kit/commit/6bd0f4444908c963292504ff6021675cdea3179e))
+
+
+### BREAKING CHANGES
+
+* None - fully backward compatible
+
 ## [0.13.1](https://github.com/sashamilenkovic/h3-oauth-kit/compare/v0.13.0...v0.13.1) (2025-11-03)
 
 
