@@ -23,9 +23,9 @@ For any other OAuth provider, you can add support by:
 Create a file `types/h3-oauth-kit.d.ts` in your project:
 
 ```typescript
-import '@sasha-milenkovic/h3-oauth-kit';
+import '@milencode/h3-oauth-kit';
 
-declare module '@sasha-milenkovic/h3-oauth-kit' {
+declare module '@milencode/h3-oauth-kit' {
   // Extend CustomOAuthProviders to include Google
   interface CustomOAuthProviders {
     google: 'google';
@@ -115,7 +115,7 @@ export default defineNuxtConfig({
 import {
   useOAuthRegistry,
   hasOAuthProviderConfig,
-} from '@sasha-milenkovic/h3-oauth-kit';
+} from '@milencode/h3-oauth-kit';
 
 export default defineNitroPlugin((nitroApp) => {
   nitroApp.hooks.hook('request', () => {
@@ -176,7 +176,7 @@ The same pattern works for any OAuth 2.0 provider. Here are examples for other p
 ### GitHub
 
 ```typescript
-declare module '@sasha-milenkovic/h3-oauth-kit' {
+declare module '@milencode/h3-oauth-kit' {
   interface CustomOAuthProviders {
     github: 'github';
   }
@@ -210,7 +210,7 @@ registerOAuthProvider('github', {
 ### Facebook
 
 ```typescript
-declare module '@sasha-milenkovic/h3-oauth-kit' {
+declare module '@milencode/h3-oauth-kit' {
   interface CustomOAuthProviders {
     facebook: 'facebook';
   }
@@ -383,7 +383,7 @@ Ensure your `tsconfig.json` includes the types directory:
 
 Make sure you:
 
-1. Imported the package in your type file: `import '@sasha-milenkovic/h3-oauth-kit';`
+1. Imported the package in your type file: `import '@milencode/h3-oauth-kit';`
 2. Used `declare module` to augment the module
 3. Restarted your TypeScript server
 

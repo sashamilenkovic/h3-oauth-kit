@@ -3,8 +3,8 @@
 [![codecov](https://codecov.io/github/sashamilenkovic/h3-oauth-kit/graph/badge.svg?token=Y4JAJQWYCQ)](https://codecov.io/github/sashamilenkovic/h3-oauth-kit)
 ![Run Vitest](https://github.com/sashamilenkovic/h3-oauth-kit/actions/workflows/ci.yml/badge.svg)
 
-A type-safe, multi-provider OAuth 2.0 toolkit for [H3](https://github.com/unjs/h3) apps.
-Handles login, callback, token refresh, and protected route middleware — all with automatic cookie storage and typed provider extensions.
+A **cookie-based**, type-safe OAuth 2.0 toolkit for [H3](https://github.com/unjs/h3) apps.
+Handles login, callback, token refresh, and protected route middleware — all with automatic HTTP-only cookie storage and typed provider extensions.
 
 > **Built-in providers:** `azure`, `clio`, `intuit`, `mycase`  
 > **Custom providers:** Add support for any OAuth 2.0 provider (Google, GitHub, Facebook, etc.) with full type safety via module augmentation.  
@@ -12,10 +12,36 @@ Handles login, callback, token refresh, and protected route middleware — all w
 
 ---
 
+## Philosophy
+
+**h3-oauth-kit is designed around HTTP-only cookies** for token storage. This approach:
+
+- ✅ **Serverless-friendly** — No Redis, database, or external dependencies required
+- ✅ **Secure by default** — HTTP-only cookies prevent XSS attacks; refresh tokens are AES-256 encrypted
+- ✅ **Simple architecture** — Works out of the box with zero infrastructure setup
+- ✅ **Fast** — No network calls to retrieve tokens from external storage
+- ✅ **Multi-tenant ready** — Instance keys enable per-tenant OAuth configurations
+
+### When h3-oauth-kit Might Not Be the Right Fit
+
+This library stores OAuth tokens in HTTP-only cookies. If your use case requires:
+
+- ❌ Centralized token storage (Redis/database-backed sessions)
+- ❌ Tokens must never touch client devices (even encrypted)
+- ❌ Immediate token revocation across all devices/instances
+- ❌ Cross-device session sharing (one login, multiple devices)
+- ❌ Tokens larger than 4KB (browser cookie size limits)
+
+...you may need a different solution or should implement OAuth with custom session management.
+
+For the vast majority of H3/Nuxt applications, cookie-based storage is the ideal balance of security, simplicity, and performance.
+
+---
+
 ## Features
 
 - 🔐 OAuth 2.0 Authorization Code flow support
-- 🍞 Token storage via secure, HTTP-only cookies
+- 🍪 Secure HTTP-only cookie storage (AES-256 encrypted refresh tokens)
 - 🔁 Automatic token refresh on protected routes
 - 🧠 State validation & metadata preservation
 - 🛠️ Utility-first API with full TypeScript safety
@@ -27,19 +53,19 @@ Handles login, callback, token refresh, and protected route middleware — all w
 ## Installation
 
 ```bash
-npm install @sasha-milenkovic/h3-oauth-kit
+npm install @milencode/h3-oauth-kit
 ```
 
 Or using yarn:
 
 ```bash
-yarn add @sasha-milenkovic/h3-oauth-kit
+yarn add @milencode/h3-oauth-kit
 ```
 
 Or using pnpm:
 
 ```bash
-pnpm add @sasha-milenkovic/h3-oauth-kit
+pnpm add @milencode/h3-oauth-kit
 ```
 
 ---
@@ -70,7 +96,7 @@ crypto.randomBytes(32).toString('hex');
 
 ```typescript
 // types/h3-oauth-kit.d.ts
-declare module '@sasha-milenkovic/h3-oauth-kit' {
+declare module '@milencode/h3-oauth-kit' {
   interface CustomOAuthProviders {
     google: 'google';
   }
@@ -110,7 +136,7 @@ Registers an OAuth provider configuration. Supports both **global** and **scoped
 #### Global Registration (Single-Tenant)
 
 ```ts
-import { registerOAuthProvider } from '@sasha-milenkovic/h3-oauth-kit';
+import { registerOAuthProvider } from '@milencode/h3-oauth-kit';
 
 registerOAuthProvider('azure', {
   clientId: 'YOUR_CLIENT_ID',
@@ -196,7 +222,7 @@ const { url } = await handleOAuthLogin('clio', 'smithlaw', {}, event);
 
 ```ts
 import { defineEventHandler, getQuery } from 'h3';
-import { handleOAuthLogin } from '@sasha-milenkovic/h3-oauth-kit';
+import { handleOAuthLogin } from '@milencode/h3-oauth-kit';
 
 export default defineEventHandler(async (event) => {
   const { tenant } = getQuery(event);
@@ -241,7 +267,7 @@ This example demonstrates how to handle the callback, where `state` represents t
 
 ```ts
 import { defineEventHandler, sendRedirect } from 'h3';
-import { handleOAuthCallback } from '@sasha-milenkovic/h3-oauth-kit';
+import { handleOAuthCallback } from '@milencode/h3-oauth-kit';
 
 export default defineEventHandler(async (event) => {
   const { state, callbackQueryData } = await handleOAuthCallback(
@@ -268,7 +294,7 @@ export default defineEventHandler(async (event) => {
 #### Global Provider Example:
 
 ```ts
-import { defineProtectedRoute } from '@sasha-milenkovic/h3-oauth-kit';
+import { defineProtectedRoute } from '@milencode/h3-oauth-kit';
 
 export default defineProtectedRoute(['azure'], async (event) => {
   const token = event.context.h3OAuthKit.azure.access_token;
@@ -289,7 +315,7 @@ export default defineProtectedRoute(['azure'], async (event) => {
 #### Scoped Provider Example (Multi-Tenant):
 
 ```ts
-import { defineProtectedRoute } from '@sasha-milenkovic/h3-oauth-kit';
+import { defineProtectedRoute } from '@milencode/h3-oauth-kit';
 
 export default defineProtectedRoute(
   [
@@ -344,7 +370,7 @@ When using `withInstanceKeys` for dynamic instance resolution, you can access th
 import {
   defineProtectedRoute,
   withInstanceKeys,
-} from '@sasha-milenkovic/h3-oauth-kit';
+} from '@milencode/h3-oauth-kit';
 import { getRouterParams, createError } from 'h3';
 
 const getClioAccountIds = () => ['123', '12345', '123456'];
@@ -422,7 +448,7 @@ event.context.h3OAuthKitInstances.clio; // "123" | "12345" | "123456" (typed uni
 A utility for creating typed provider definitions with explicit instance keys. This enables better TypeScript support when working with dynamic instance resolution.
 
 ```ts
-import { withInstanceKeys } from '@sasha-milenkovic/h3-oauth-kit';
+import { withInstanceKeys } from '@milencode/h3-oauth-kit';
 
 // Define possible instance keys and resolution logic
 const clioProvider = withInstanceKeys(
@@ -455,7 +481,7 @@ export default defineProtectedRoute([clioProvider], async (event) => {
 
 ```ts
 // server/api/auth/logout.get.ts
-import { handleOAuthLogout } from '@sasha-milenkovic/h3-oauth-kit';
+import { handleOAuthLogout } from '@milencode/h3-oauth-kit';
 
 export default handleOAuthLogout(['azure', 'clio'], {
   redirectTo: '/login',
@@ -496,7 +522,7 @@ export default handleOAuthLogout(
 
 ```ts
 import { defineEventHandler } from 'h3';
-import { handleOAuthLogout } from '@sasha-milenkovic/h3-oauth-kit';
+import { handleOAuthLogout } from '@milencode/h3-oauth-kit';
 
 export default defineEventHandler(async (event) => {
   const result = await handleOAuthLogout(['azure'], {}, event);
@@ -513,7 +539,7 @@ export default defineEventHandler(async (event) => {
 ```ts
 // server/api/auth/logout.get.ts
 import { defineEventHandler, getQuery } from 'h3';
-import { handleOAuthLogout } from '@sasha-milenkovic/h3-oauth-kit';
+import { handleOAuthLogout } from '@milencode/h3-oauth-kit';
 
 export default defineEventHandler((event) => {
   const { providers } = getQuery(event);

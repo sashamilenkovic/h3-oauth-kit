@@ -44,4 +44,50 @@ describe("buildAuthUrl", () => {
     expect(parsed.searchParams.get("prompt")).toBe("consent");
     expect(parsed.searchParams.get("client_id")).toBe(base.clientId);
   });
+
+  describe("PKCE support", () => {
+    it("includes code_challenge and code_challenge_method when provided", () => {
+      const url = buildAuthUrl({
+        ...base,
+        codeChallenge: "E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM",
+        codeChallengeMethod: "S256",
+      });
+
+      const parsed = new URL(url);
+      expect(parsed.searchParams.get("code_challenge")).toBe(
+        "E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM"
+      );
+      expect(parsed.searchParams.get("code_challenge_method")).toBe("S256");
+    });
+
+    it("does not include PKCE params when not provided", () => {
+      const url = buildAuthUrl(base);
+
+      const parsed = new URL(url);
+      expect(parsed.searchParams.has("code_challenge")).toBe(false);
+      expect(parsed.searchParams.has("code_challenge_method")).toBe(false);
+    });
+
+    it("does not include PKCE params when only challenge is provided", () => {
+      const url = buildAuthUrl({
+        ...base,
+        codeChallenge: "E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM",
+      });
+
+      const parsed = new URL(url);
+      expect(parsed.searchParams.has("code_challenge")).toBe(false);
+      expect(parsed.searchParams.has("code_challenge_method")).toBe(false);
+    });
+
+    it("does not include PKCE params when only method is provided", () => {
+      const url = buildAuthUrl({
+        ...base,
+        codeChallengeMethod: "S256",
+      });
+
+      const parsed = new URL(url);
+      expect(parsed.searchParams.has("code_challenge")).toBe(false);
+      expect(parsed.searchParams.has("code_challenge_method")).toBe(false);
+    });
+  });
 });

@@ -19,6 +19,7 @@ import type {
   GetProviderKey,
   TokenFor,
   InputOAuthProviderConfigMap,
+  TokenStatus,
 } from './types';
 
 import {
@@ -28,6 +29,8 @@ import {
   getQuery,
   isError,
   deleteCookie,
+  setCookie,
+  getCookie,
 } from 'h3';
 import {
   setProviderCookies,
@@ -46,8 +49,14 @@ import {
   parseProviderKey,
   clearNonPreservedCookies,
   discoverProviderInstance,
+  generateCodeVerifier,
+  generateCodeChallenge,
+  fetchUserInfo,
+  parseIDToken,
+  shouldRefreshToken,
 } from './utils';
 import { createEncryption } from './utils/encryption';
+import { ofetch } from 'ofetch';
 
 /**
  * @internal
@@ -295,12 +304,34 @@ export function handleOAuthLogin<P extends OAuthProvider>(
 
     const state = resolveState(evt, providerKey, options?.state);
 
+    // PKCE flow
+    const pkceParams: {
+      codeChallenge?: string;
+      codeChallengeMethod?: 'S256';
+    } = {};
+
+    if (config.usePKCE) {
+      const codeVerifier = generateCodeVerifier();
+      pkceParams.codeChallenge = await generateCodeChallenge(codeVerifier);
+      pkceParams.codeChallengeMethod = 'S256';
+
+      // Store code_verifier in cookie for verification during callback
+      setCookie(evt, `oauth_pkce_${providerKey}`, codeVerifier, {
+        httpOnly: true,
+        secure: true,
+        sameSite: 'lax',
+        path: '/',
+        maxAge: 300, // 5 minutes (same as CSRF)
+      });
+    }
+
     const authUrl = buildAuthUrl({
       authorizeEndpoint: config.authorizeEndpoint,
       clientId: config.clientId,
       redirectUri: config.redirectUri,
       scopes: config.scopes,
       state,
+      ...pkceParams,
     });
 
     if (options?.redirect === true) {
@@ -464,7 +495,29 @@ export function handleOAuthCallback<P extends OAuthProvider>(
         ? getOAuthProviderConfig(provider, instanceKey)
         : getOAuthProviderConfig(provider);
 
-      const rawTokens = await exchangeCodeForTokens(code, config, provider);
+      // Retrieve and verify PKCE code_verifier if PKCE was used
+      let codeVerifier: string | undefined;
+      if (config.usePKCE) {
+        const cookieKey = `oauth_pkce_${parsedState.providerKey}`;
+        codeVerifier = getCookie(evt, cookieKey);
+
+        if (!codeVerifier) {
+          throw createError({
+            statusCode: 400,
+            statusMessage: 'PKCE code_verifier missing from callback',
+          });
+        }
+
+        // Delete the PKCE cookie after reading
+        deleteCookie(evt, cookieKey);
+      }
+
+      const rawTokens = await exchangeCodeForTokens(
+        code,
+        config,
+        provider,
+        codeVerifier,
+      );
 
       // Add user validation step
       if (options?.instanceEquivalent) {
@@ -496,6 +549,11 @@ export function handleOAuthCallback<P extends OAuthProvider>(
         options?.cookieOptions,
         instanceKey,
       );
+
+      // Call onLogin hook if provided
+      if (config.hooks?.onLogin) {
+        await config.hooks.onLogin(evt, tokens, provider, instanceKey);
+      }
 
       const redirectTo = options?.redirectTo || '/';
 
@@ -623,6 +681,11 @@ export function defineProtectedRoute<
           }
         }
 
+        // Get provider config early so it's available throughout
+        const config = instanceKey
+          ? getOAuthProviderConfig(provider, instanceKey)
+          : getOAuthProviderConfig(provider);
+
         let providerKey = getProviderKey(provider, instanceKey);
         let result = await oAuthTokensAreValid(event, provider, instanceKey);
 
@@ -661,10 +724,15 @@ export function defineProtectedRoute<
 
         let tokens = result.tokens;
 
-        if (result.status === 'expired') {
-          const config = instanceKey
-            ? getOAuthProviderConfig(provider, instanceKey)
-            : getOAuthProviderConfig(provider);
+        // Check if we should proactively refresh (token prefetching)
+        const shouldRefresh =
+          result.status === 'expired' ||
+          (result.status === 'valid' &&
+            options?.refreshThreshold &&
+            shouldRefreshToken(tokens, options.refreshThreshold));
+
+        if (shouldRefresh) {
+          const oldTokens = tokens;
 
           const refreshed = await refreshToken(
             tokens.refresh_token!,
@@ -673,6 +741,11 @@ export function defineProtectedRoute<
           );
 
           if (!refreshed) {
+            // Call onTokenExpired hook
+            if (config.hooks?.onTokenExpired) {
+              await config.hooks.onTokenExpired(event, provider, instanceKey);
+            }
+
             const error = createError({
               statusCode: 401,
               message: `Token refresh failed for "${providerKey}"`,
@@ -704,6 +777,30 @@ export function defineProtectedRoute<
             options?.cookieOptions,
             instanceKey,
           );
+
+          // Call onTokenRefresh hook after successful refresh
+          if (config.hooks?.onTokenRefresh) {
+            await config.hooks.onTokenRefresh(
+              event,
+              oldTokens,
+              tokens,
+              provider,
+              instanceKey,
+            );
+          }
+        }
+
+        // Fetch OIDC userInfo if configured
+        const userInfo = await fetchUserInfo(
+          config.userInfoEndpoint,
+          tokens.access_token,
+          provider,
+        );
+
+        // Parse ID token if present
+        let id_token_claims;
+        if ('id_token' in tokens && typeof tokens.id_token === 'string') {
+          id_token_claims = parseIDToken(tokens.id_token);
         }
 
         // Correctly type-safe assign token using GetProviderKey
@@ -711,7 +808,11 @@ export function defineProtectedRoute<
         type Key = GetProviderKey<Def>;
         type Token = TokenFor<ProviderId<Def>>;
         (ctx.h3OAuthKit as unknown as Record<Key, Token>)[providerKey as Key] =
-          tokens as Token;
+          {
+            ...tokens,
+            userInfo,
+            id_token_claims,
+          } as Token;
 
         // Store the resolved instance key
         const baseProvider = isScoped ? def.provider : def;
@@ -820,6 +921,17 @@ export function handleOAuthLogout(
 
   const handler = async (evt: H3Event) => {
     for (const { provider, instanceKey } of normalized) {
+      // Call onLogout hook before deleting cookies (if provider is registered)
+      if (hasOAuthProviderConfig(provider, instanceKey)) {
+        const config = instanceKey
+          ? getOAuthProviderConfig(provider, instanceKey)
+          : getOAuthProviderConfig(provider);
+
+        if (config.hooks?.onLogout) {
+          await config.hooks.onLogout(evt, provider, instanceKey);
+        }
+      }
+
       deleteProviderCookies(evt, provider, instanceKey);
     }
 
@@ -936,6 +1048,125 @@ export function withInstanceKeys<
     instanceResolver: resolver,
     __instanceKeys: instanceKeys,
   };
+}
+
+/**
+ * Revokes OAuth tokens with the provider and deletes local cookies.
+ *
+ * This function can optionally call the provider's revocation endpoint to
+ * invalidate tokens server-side before deleting them locally.
+ *
+ * @param event - The H3 event containing cookies
+ * @param provider - The OAuth provider to revoke
+ * @param options - Revocation options
+ * @param options.revokeRemote - Whether to call the provider's revocation endpoint (default: true if configured)
+ * @param options.instanceKey - Optional instance key for multi-tenant setups
+ *
+ * @returns Promise resolving when revocation is complete
+ */
+export async function revokeOAuthTokens(
+  event: H3Event,
+  provider: OAuthProvider,
+  options?: {
+    revokeRemote?: boolean;
+    instanceKey?: string;
+  },
+): Promise<void> {
+  const { revokeRemote = true, instanceKey } = options || {};
+
+  // Get the config to check if revoke endpoint exists
+  const hasConfig = hasOAuthProviderConfig(provider, instanceKey);
+
+  if (hasConfig && revokeRemote) {
+    const config = instanceKey
+      ? getOAuthProviderConfig(provider, instanceKey)
+      : getOAuthProviderConfig(provider);
+
+    // If revoke endpoint is configured, call it
+    if (config.revokeEndpoint) {
+      try {
+        // Get the token to revoke
+        const result = await oAuthTokensAreValid(event, provider, instanceKey);
+
+        if (result && result.tokens.access_token) {
+          await ofetch(config.revokeEndpoint, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/x-www-form-urlencoded',
+            },
+            body: new URLSearchParams({
+              token: result.tokens.access_token,
+              client_id: config.clientId,
+              client_secret: config.clientSecret,
+            }).toString(),
+          });
+        }
+      } catch (error) {
+        // Log error but continue with local cookie deletion
+        // eslint-disable-next-line no-console
+        console.error(
+          `Failed to revoke token remotely for ${provider}:`,
+          error,
+        );
+      }
+    }
+  }
+
+  // Always delete local cookies
+  deleteProviderCookies(event, provider, instanceKey);
+}
+
+/**
+ * Checks the current status of OAuth tokens for a provider without triggering a refresh.
+ *
+ * This is useful for dashboards or status displays where you want to show
+ * connection status without automatically refreshing expired tokens.
+ *
+ * @param event - The H3 event containing cookies
+ * @param provider - The OAuth provider to check
+ * @param instanceKey - Optional instance key for multi-tenant setups
+ *
+ * @returns Token status information including validity, expiry time, and refresh capability
+ */
+export async function checkTokenStatus<P extends OAuthProvider>(
+  event: H3Event,
+  provider: P,
+  instanceKey?: string,
+): Promise<TokenStatus> {
+  const result = await oAuthTokensAreValid(event, provider, instanceKey);
+
+  if (!result) {
+    const status: TokenStatus = {
+      isValid: false,
+      requiresRefresh: false,
+      hasRefreshToken: false,
+      provider,
+    };
+    if (instanceKey) {
+      status.instanceKey = instanceKey;
+    }
+    return status;
+  }
+
+  const now = Math.floor(Date.now() / 1000);
+  const expiresAt = result.tokens.expires_in;
+  const expiresIn = expiresAt - now;
+  const isExpired = result.status === 'expired';
+
+  const status: TokenStatus = {
+    isValid: !isExpired,
+    expiresIn: expiresIn > 0 ? expiresIn : 0,
+    expiresAt: new Date(expiresAt * 1000).toISOString(),
+    requiresRefresh: isExpired,
+    hasRefreshToken: !!result.tokens.refresh_token,
+    provider,
+  };
+
+  if (instanceKey) {
+    status.instanceKey = instanceKey;
+  }
+
+  return status;
 }
 
 export * from './types';

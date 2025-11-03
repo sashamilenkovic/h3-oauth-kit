@@ -20,6 +20,33 @@ import { getProviderConfig } from '../providerConfig';
 import { ofetch } from 'ofetch';
 import { getOAuthProviderConfig } from '..';
 
+export { generateCodeVerifier, generateCodeChallenge } from './pkce';
+export { fetchUserInfo, parseIDToken, validateIDTokenClaims } from './oidc';
+
+/**
+ * @internal
+ *
+ * Determines if a token should be refreshed based on a time threshold.
+ *
+ * This is used for token prefetching - refreshing tokens before they expire
+ * to prevent interruptions in long-running requests or user sessions.
+ *
+ * @param tokens - The token object containing expires_in
+ * @param thresholdSeconds - Number of seconds before expiry to trigger refresh
+ *
+ * @returns true if the token expires within the threshold, false otherwise
+ */
+export function shouldRefreshToken(
+  tokens: { expires_in: number },
+  thresholdSeconds: number,
+): boolean {
+  const now = Math.floor(Date.now() / 1000);
+  const expiresAt = tokens.expires_in;
+  const timeUntilExpiry = expiresAt - now;
+
+  return timeUntilExpiry <= thresholdSeconds && timeUntilExpiry > 0;
+}
+
 /**
  * @internal
  *
@@ -289,6 +316,8 @@ export function parseOAuthState(rawState: string): OAuthParsedState {
  * - `response_type` (always `"code"`)
  * - `scope`
  * - `state`
+ * - `code_challenge` (PKCE, optional)
+ * - `code_challenge_method` (PKCE, optional)
  *
  * This URL is used to redirect the user to the provider's login/consent screen.
  *
@@ -297,6 +326,8 @@ export function parseOAuthState(rawState: string): OAuthParsedState {
  * @param redirectUri - The URI the provider should redirect to after login.
  * @param scopes - An array of OAuth scopes to request during authorization.
  * @param state - A unique CSRF token to include for validating the callback.
+ * @param codeChallenge - Optional PKCE code challenge (base64url-encoded SHA-256 hash).
+ * @param codeChallengeMethod - Optional PKCE method (always 'S256' for SHA-256).
  *
  * @returns A full URL string with all required OAuth query parameters attached.
  *
@@ -307,12 +338,16 @@ export function buildAuthUrl({
   redirectUri,
   scopes,
   state,
+  codeChallenge,
+  codeChallengeMethod,
 }: {
   authorizeEndpoint: string;
   clientId: string;
   redirectUri: string;
   scopes: string[];
   state: string;
+  codeChallenge?: string;
+  codeChallengeMethod?: 'S256';
 }): string {
   const url = new URL(authorizeEndpoint);
   url.searchParams.set('client_id', clientId);
@@ -320,6 +355,12 @@ export function buildAuthUrl({
   url.searchParams.set('response_type', 'code');
   url.searchParams.set('scope', scopes.join(' '));
   url.searchParams.set('state', state);
+
+  // Add PKCE parameters if provided
+  if (codeChallenge && codeChallengeMethod) {
+    url.searchParams.set('code_challenge', codeChallenge);
+    url.searchParams.set('code_challenge_method', codeChallengeMethod);
+  }
 
   return url.toString();
 }
@@ -471,12 +512,15 @@ export function verifyStateParam(
  * provider-specific configuration (client ID, secret, scopes, redirect URI, etc.)
  * and returns the parsed token response typed for the given provider.
  *
+ * When PKCE is used, the code_verifier must be provided to complete the flow.
+ *
  * If the request fails (e.g., due to invalid credentials or code), it throws
  * an H3 error with the status and message parsed from the provider's error response.
  *
  * @param code - The authorization code received from the OAuth callback.
  * @param config - The provider-specific OAuth configuration (client ID, secret, etc.).
  * @param _provider - The OAuth provider identifier (e.g., "clio", "azure", "intuit").
+ * @param codeVerifier - Optional PKCE code verifier (required if PKCE was used).
  *
  * @returns A typed object containing access and refresh tokens for the provider.
  *
@@ -486,6 +530,7 @@ export async function exchangeCodeForTokens<P extends OAuthProvider>(
   code: string,
   config: OAuthProviderConfigMap[P],
   _provider: P,
+  codeVerifier?: string,
 ): Promise<OAuthProviderTokenMap[P]> {
   const params: Record<string, string> = {
     client_id: config.clientId,
@@ -497,6 +542,11 @@ export async function exchangeCodeForTokens<P extends OAuthProvider>(
 
   if (config.scopes) {
     params.scope = config.scopes.join(' ');
+  }
+
+  // Add PKCE code_verifier if provided
+  if (codeVerifier) {
+    params.code_verifier = codeVerifier;
   }
 
   try {

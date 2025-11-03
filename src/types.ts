@@ -16,6 +16,32 @@ export type RequiredPick<T, K extends keyof T> = {
   [P in K]-?: NonNullable<T[P]>;
 };
 
+export interface OAuthProviderHooks<P extends OAuthProvider = OAuthProvider> {
+  onLogin?: (
+    event: H3Event,
+    tokens: OAuthProviderTokenMap[P],
+    provider: P,
+    instanceKey?: string,
+  ) => Promise<void> | void;
+  onTokenRefresh?: (
+    event: H3Event,
+    oldTokens: OAuthProviderTokenMap[P],
+    newTokens: OAuthProviderTokenMap[P],
+    provider: P,
+    instanceKey?: string,
+  ) => Promise<void> | void;
+  onTokenExpired?: (
+    event: H3Event,
+    provider: P,
+    instanceKey?: string,
+  ) => Promise<void> | void;
+  onLogout?: (
+    event: H3Event,
+    provider: P,
+    instanceKey?: string,
+  ) => Promise<void> | void;
+}
+
 export interface BaseOAuthProviderConfig {
   clientId: string;
   clientSecret: string;
@@ -25,6 +51,10 @@ export interface BaseOAuthProviderConfig {
   scopes: string[];
   encrypt: (text: string) => Promise<string>;
   decrypt: (encryptedText: string) => Promise<string>;
+  usePKCE?: boolean;
+  userInfoEndpoint?: string;
+  revokeEndpoint?: string;
+  hooks?: OAuthProviderHooks;
 }
 
 export type OAuthProviderConfig =
@@ -286,6 +316,7 @@ export interface HandleOAuthCallbackOptions {
 
 export interface ProtectedRouteOptions<_InstanceKeys extends string = never> {
   cookieOptions?: CookieOptionsOverride;
+  refreshThreshold?: number; // Seconds before expiry to trigger refresh
   onAuthFailure?: (
     event: H3Event,
     provider: OAuthProvider,
@@ -446,7 +477,10 @@ export type AugmentedContext<
   _InstanceKeys extends string = never,
 > = {
   h3OAuthKit: {
-    [P in Defs[number] as GetProviderKey<P>]: OAuthProviderTokenMap[ProviderId<P>];
+    [P in Defs[number] as GetProviderKey<P>]: OAuthProviderTokenMap[ProviderId<P>] & {
+      userInfo?: OAuthProviderUserInfoMap[ProviderId<P>];
+      id_token_claims?: IDTokenClaims;
+    };
   };
   h3OAuthKitInstances: ResolvedInstances<Defs>;
 };
@@ -481,18 +515,48 @@ export type LogoutProviderInput =
 export type InputBaseOAuthProviderConfig = Omit<
   BaseOAuthProviderConfig,
   'encrypt' | 'decrypt'
->;
+> & {
+  usePKCE?: boolean;
+  userInfoEndpoint?: string;
+  revokeEndpoint?: string;
+  hooks?: OAuthProviderHooks;
+};
 
 export interface InputAzureOAuthProviderConfig
-  extends Omit<AzureOAuthProviderConfig, 'encrypt' | 'decrypt'> {}
+  extends Omit<AzureOAuthProviderConfig, 'encrypt' | 'decrypt' | 'hooks'> {
+  usePKCE?: boolean;
+  userInfoEndpoint?: string;
+  revokeEndpoint?: string;
+  hooks?: OAuthProviderHooks<'azure'>;
+}
 export interface InputClioOAuthProviderConfig
-  extends Omit<ClioOAuthProviderConfig, 'encrypt' | 'decrypt'> {}
+  extends Omit<ClioOAuthProviderConfig, 'encrypt' | 'decrypt' | 'hooks'> {
+  usePKCE?: boolean;
+  userInfoEndpoint?: string;
+  revokeEndpoint?: string;
+  hooks?: OAuthProviderHooks<'clio'>;
+}
 export interface InputIntuitOAuthProviderConfig
-  extends Omit<IntuitOAuthProviderConfig, 'encrypt' | 'decrypt'> {}
+  extends Omit<IntuitOAuthProviderConfig, 'encrypt' | 'decrypt' | 'hooks'> {
+  usePKCE?: boolean;
+  userInfoEndpoint?: string;
+  revokeEndpoint?: string;
+  hooks?: OAuthProviderHooks<'intuit'>;
+}
 export interface InputMyCaseOAuthProviderConfig
-  extends Omit<MyCaseOAuthProviderConfig, 'encrypt' | 'decrypt'> {}
+  extends Omit<MyCaseOAuthProviderConfig, 'encrypt' | 'decrypt' | 'hooks'> {
+  usePKCE?: boolean;
+  userInfoEndpoint?: string;
+  revokeEndpoint?: string;
+  hooks?: OAuthProviderHooks<'mycase'>;
+}
 export interface InputGenericOAuthProviderConfig
-  extends Omit<GenericOAuthProviderConfig, 'encrypt' | 'decrypt'> {}
+  extends Omit<GenericOAuthProviderConfig, 'encrypt' | 'decrypt' | 'hooks'> {
+  usePKCE?: boolean;
+  userInfoEndpoint?: string;
+  revokeEndpoint?: string;
+  hooks?: OAuthProviderHooks;
+}
 
 // Known input config map
 type KnownInputProviderConfigMap = {
@@ -528,3 +592,70 @@ export type ResolvedInstances<Defs extends (OAuthProvider | ScopedProvider)[]> =
         : undefined
       : undefined;
   };
+
+// OIDC UserInfo standard claims
+export interface OIDCUserInfo {
+  sub: string; // Subject - unique identifier
+  name?: string;
+  given_name?: string;
+  family_name?: string;
+  middle_name?: string;
+  nickname?: string;
+  preferred_username?: string;
+  profile?: string;
+  picture?: string;
+  website?: string;
+  email?: string;
+  email_verified?: boolean;
+  gender?: string;
+  birthdate?: string;
+  zoneinfo?: string;
+  locale?: string;
+  phone_number?: string;
+  phone_number_verified?: boolean;
+  address?: {
+    formatted?: string;
+    street_address?: string;
+    locality?: string;
+    region?: string;
+    postal_code?: string;
+    country?: string;
+  };
+  updated_at?: number;
+  [key: string]: unknown; // Allow additional provider-specific claims
+}
+
+// ID Token standard claims (JWT)
+export interface IDTokenClaims {
+  iss: string; // Issuer
+  sub: string; // Subject
+  aud: string | string[]; // Audience
+  exp: number; // Expiration time
+  iat: number; // Issued at
+  auth_time?: number; // Authentication time
+  nonce?: string; // Nonce
+  acr?: string; // Authentication Context Class Reference
+  amr?: string[]; // Authentication Methods References
+  azp?: string; // Authorized party
+  [key: string]: unknown; // Allow additional claims
+}
+
+// Provider-specific userInfo maps (extensible)
+export interface CustomProviderUserInfoMap {}
+
+export type OAuthProviderUserInfoMap = {
+  [K in OAuthProvider]: K extends keyof CustomProviderUserInfoMap
+    ? CustomProviderUserInfoMap[K]
+    : OIDCUserInfo;
+};
+
+// Token status information
+export interface TokenStatus {
+  isValid: boolean;
+  expiresIn?: number; // seconds until expiry
+  expiresAt?: string; // ISO date string
+  requiresRefresh: boolean;
+  hasRefreshToken: boolean;
+  provider: OAuthProvider;
+  instanceKey?: string;
+}

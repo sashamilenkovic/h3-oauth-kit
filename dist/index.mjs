@@ -62,6 +62,81 @@ function getProviderConfig(provider) {
   return knownProviderConfig[provider] || defaultProviderConfig;
 }
 
+function generateCodeVerifier() {
+  const randomBytes = crypto.getRandomValues(new Uint8Array(32));
+  return base64UrlEncode(randomBytes);
+}
+async function generateCodeChallenge(codeVerifier) {
+  const encoder = new TextEncoder();
+  const data = encoder.encode(codeVerifier);
+  const hash = await crypto.subtle.digest("SHA-256", data);
+  return base64UrlEncode(new Uint8Array(hash));
+}
+function base64UrlEncode(buffer) {
+  const base64 = btoa(String.fromCharCode(...buffer));
+  return base64.replace(/\+/g, "-").replace(/\//g, "_").replace(/=/g, "");
+}
+
+async function fetchUserInfo(userInfoEndpoint, accessToken, _provider) {
+  if (!userInfoEndpoint) {
+    return void 0;
+  }
+  try {
+    const userInfo = await ofetch(
+      userInfoEndpoint,
+      {
+        headers: {
+          Authorization: `Bearer ${accessToken}`
+        }
+      }
+    );
+    return userInfo;
+  } catch (error) {
+    console.error(`Failed to fetch userInfo from ${userInfoEndpoint}:`, error);
+    return void 0;
+  }
+}
+function parseIDToken(idToken) {
+  if (!idToken) {
+    return void 0;
+  }
+  try {
+    const parts = idToken.split(".");
+    if (parts.length !== 3) {
+      console.error("Invalid ID token format: expected 3 parts");
+      return void 0;
+    }
+    const payload = parts[1];
+    const decoded = base64UrlDecode(payload);
+    const claims = JSON.parse(decoded);
+    if (!claims.iss || !claims.sub || !claims.aud || !claims.exp || !claims.iat) {
+      console.error("ID token missing required claims");
+      return void 0;
+    }
+    return claims;
+  } catch (error) {
+    console.error("Failed to parse ID token:", error);
+    return void 0;
+  }
+}
+function base64UrlDecode(base64Url) {
+  let base64 = base64Url.replace(/-/g, "+").replace(/_/g, "/");
+  const padding = base64.length % 4;
+  if (padding > 0) {
+    base64 += "=".repeat(4 - padding);
+  }
+  const decoded = atob(base64);
+  return decodeURIComponent(
+    decoded.split("").map((c) => "%" + ("00" + c.charCodeAt(0).toString(16)).slice(-2)).join("")
+  );
+}
+
+function shouldRefreshToken(tokens, thresholdSeconds) {
+  const now = Math.floor(Date.now() / 1e3);
+  const expiresAt = tokens.expires_in;
+  const timeUntilExpiry = expiresAt - now;
+  return timeUntilExpiry <= thresholdSeconds && timeUntilExpiry > 0;
+}
 async function setProviderCookies(event, tokens, provider, options, instanceKey) {
   const providerKey = instanceKey ? `${provider}:${instanceKey}` : provider;
   const base = {
@@ -164,7 +239,9 @@ function buildAuthUrl({
   clientId,
   redirectUri,
   scopes,
-  state
+  state,
+  codeChallenge,
+  codeChallengeMethod
 }) {
   const url = new URL(authorizeEndpoint);
   url.searchParams.set("client_id", clientId);
@@ -172,6 +249,10 @@ function buildAuthUrl({
   url.searchParams.set("response_type", "code");
   url.searchParams.set("scope", scopes.join(" "));
   url.searchParams.set("state", state);
+  if (codeChallenge && codeChallengeMethod) {
+    url.searchParams.set("code_challenge", codeChallenge);
+    url.searchParams.set("code_challenge_method", codeChallengeMethod);
+  }
   return url.toString();
 }
 function parseProviderKey(providerKey, delimiter = ":") {
@@ -236,7 +317,7 @@ function verifyStateParam(event, parsedState) {
   }
   deleteCookie(event, cookieKey);
 }
-async function exchangeCodeForTokens(code, config, _provider) {
+async function exchangeCodeForTokens(code, config, _provider, codeVerifier) {
   const params = {
     client_id: config.clientId,
     client_secret: config.clientSecret,
@@ -246,6 +327,9 @@ async function exchangeCodeForTokens(code, config, _provider) {
   };
   if (config.scopes) {
     params.scope = config.scopes.join(" ");
+  }
+  if (codeVerifier) {
+    params.code_verifier = codeVerifier;
   }
   try {
     return await ofetch(config.tokenEndpoint, {
@@ -619,12 +703,27 @@ function handleOAuthLogin(provider, instanceKey, optionsOrEvent, maybeEvent) {
       options?.preserveInstance
     );
     const state = resolveState(evt, providerKey, options?.state);
+    const pkceParams = {};
+    if (config.usePKCE) {
+      const codeVerifier = generateCodeVerifier();
+      pkceParams.codeChallenge = await generateCodeChallenge(codeVerifier);
+      pkceParams.codeChallengeMethod = "S256";
+      setCookie(evt, `oauth_pkce_${providerKey}`, codeVerifier, {
+        httpOnly: true,
+        secure: true,
+        sameSite: "lax",
+        path: "/",
+        maxAge: 300
+        // 5 minutes (same as CSRF)
+      });
+    }
     const authUrl = buildAuthUrl({
       authorizeEndpoint: config.authorizeEndpoint,
       clientId: config.clientId,
       redirectUri: config.redirectUri,
       scopes: config.scopes,
-      state
+      state,
+      ...pkceParams
     });
     if (options?.redirect === true) {
       return sendRedirect(evt, authUrl, 302);
@@ -658,7 +757,24 @@ function handleOAuthCallback(provider, options, event) {
         preserveInstance
       } = parseProviderKey(parsedState.providerKey);
       const config = instanceKey ? getOAuthProviderConfig(provider, instanceKey) : getOAuthProviderConfig(provider);
-      const rawTokens = await exchangeCodeForTokens(code, config, provider);
+      let codeVerifier;
+      if (config.usePKCE) {
+        const cookieKey = `oauth_pkce_${parsedState.providerKey}`;
+        codeVerifier = getCookie(evt, cookieKey);
+        if (!codeVerifier) {
+          throw createError({
+            statusCode: 400,
+            statusMessage: "PKCE code_verifier missing from callback"
+          });
+        }
+        deleteCookie(evt, cookieKey);
+      }
+      const rawTokens = await exchangeCodeForTokens(
+        code,
+        config,
+        provider,
+        codeVerifier
+      );
       if (options?.instanceEquivalent) {
         const isValid = await options.instanceEquivalent(
           rawTokens,
@@ -683,6 +799,9 @@ function handleOAuthCallback(provider, options, event) {
         options?.cookieOptions,
         instanceKey
       );
+      if (config.hooks?.onLogin) {
+        await config.hooks.onLogin(evt, tokens, provider, instanceKey);
+      }
       const redirectTo = options?.redirectTo || "/";
       if (options?.redirect === false) {
         const callbackQueryData = parseOAuthCallbackQuery(evt, provider);
@@ -731,6 +850,7 @@ function defineProtectedRoute(providers, handler, options) {
             instanceKey = await def.instanceResolver(event);
           }
         }
+        const config = instanceKey ? getOAuthProviderConfig(provider, instanceKey) : getOAuthProviderConfig(provider);
         let providerKey = getProviderKey(provider, instanceKey);
         let result = await oAuthTokensAreValid(event, provider, instanceKey);
         if (!result && !isScoped) {
@@ -761,14 +881,18 @@ function defineProtectedRoute(providers, handler, options) {
           throw error;
         }
         let tokens = result.tokens;
-        if (result.status === "expired") {
-          const config = instanceKey ? getOAuthProviderConfig(provider, instanceKey) : getOAuthProviderConfig(provider);
+        const shouldRefresh = result.status === "expired" || result.status === "valid" && options?.refreshThreshold && shouldRefreshToken(tokens, options.refreshThreshold);
+        if (shouldRefresh) {
+          const oldTokens = tokens;
           const refreshed = await refreshToken(
             tokens.refresh_token,
             config,
             provider
           );
           if (!refreshed) {
+            if (config.hooks?.onTokenExpired) {
+              await config.hooks.onTokenExpired(event, provider, instanceKey);
+            }
             const error = createError({
               statusCode: 401,
               message: `Token refresh failed for "${providerKey}"`
@@ -796,8 +920,30 @@ function defineProtectedRoute(providers, handler, options) {
             options?.cookieOptions,
             instanceKey
           );
+          if (config.hooks?.onTokenRefresh) {
+            await config.hooks.onTokenRefresh(
+              event,
+              oldTokens,
+              tokens,
+              provider,
+              instanceKey
+            );
+          }
         }
-        ctx.h3OAuthKit[providerKey] = tokens;
+        const userInfo = await fetchUserInfo(
+          config.userInfoEndpoint,
+          tokens.access_token,
+          provider
+        );
+        let id_token_claims;
+        if ("id_token" in tokens && typeof tokens.id_token === "string") {
+          id_token_claims = parseIDToken(tokens.id_token);
+        }
+        ctx.h3OAuthKit[providerKey] = {
+          ...tokens,
+          userInfo,
+          id_token_claims
+        };
         const baseProvider = isScoped ? def.provider : def;
         ctx.h3OAuthKitInstances[baseProvider] = instanceKey;
       } catch (error) {
@@ -853,6 +999,12 @@ function handleOAuthLogout(providers, options, event) {
   );
   const handler = async (evt) => {
     for (const { provider, instanceKey } of normalized) {
+      if (hasOAuthProviderConfig(provider, instanceKey)) {
+        const config = instanceKey ? getOAuthProviderConfig(provider, instanceKey) : getOAuthProviderConfig(provider);
+        if (config.hooks?.onLogout) {
+          await config.hooks.onLogout(evt, provider, instanceKey);
+        }
+      }
       deleteProviderCookies(evt, provider, instanceKey);
     }
     if (options?.redirectTo) {
@@ -890,5 +1042,67 @@ function withInstanceKeys(provider, instanceKeys, resolver) {
     __instanceKeys: instanceKeys
   };
 }
+async function revokeOAuthTokens(event, provider, options) {
+  const { revokeRemote = true, instanceKey } = options || {};
+  const hasConfig = hasOAuthProviderConfig(provider, instanceKey);
+  if (hasConfig && revokeRemote) {
+    const config = instanceKey ? getOAuthProviderConfig(provider, instanceKey) : getOAuthProviderConfig(provider);
+    if (config.revokeEndpoint) {
+      try {
+        const result = await oAuthTokensAreValid(event, provider, instanceKey);
+        if (result && result.tokens.access_token) {
+          await ofetch(config.revokeEndpoint, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/x-www-form-urlencoded"
+            },
+            body: new URLSearchParams({
+              token: result.tokens.access_token,
+              client_id: config.clientId,
+              client_secret: config.clientSecret
+            }).toString()
+          });
+        }
+      } catch (error) {
+        console.error(
+          `Failed to revoke token remotely for ${provider}:`,
+          error
+        );
+      }
+    }
+  }
+  deleteProviderCookies(event, provider, instanceKey);
+}
+async function checkTokenStatus(event, provider, instanceKey) {
+  const result = await oAuthTokensAreValid(event, provider, instanceKey);
+  if (!result) {
+    const status2 = {
+      isValid: false,
+      requiresRefresh: false,
+      hasRefreshToken: false,
+      provider
+    };
+    if (instanceKey) {
+      status2.instanceKey = instanceKey;
+    }
+    return status2;
+  }
+  const now = Math.floor(Date.now() / 1e3);
+  const expiresAt = result.tokens.expires_in;
+  const expiresIn = expiresAt - now;
+  const isExpired = result.status === "expired";
+  const status = {
+    isValid: !isExpired,
+    expiresIn: expiresIn > 0 ? expiresIn : 0,
+    expiresAt: new Date(expiresAt * 1e3).toISOString(),
+    requiresRefresh: isExpired,
+    hasRefreshToken: !!result.tokens.refresh_token,
+    provider
+  };
+  if (instanceKey) {
+    status.instanceKey = instanceKey;
+  }
+  return status;
+}
 
-export { defineProtectedRoute, deleteProviderCookies, getDiscoveredProviderTokens, getOAuthProviderConfig, handleOAuthCallback, handleOAuthLogin, handleOAuthLogout, hasOAuthProviderConfig, providerRegistry, typedInstanceResolver, useOAuthRegistry, withInstanceKeys };
+export { checkTokenStatus, defineProtectedRoute, deleteProviderCookies, getDiscoveredProviderTokens, getOAuthProviderConfig, handleOAuthCallback, handleOAuthLogin, handleOAuthLogout, hasOAuthProviderConfig, providerRegistry, revokeOAuthTokens, typedInstanceResolver, useOAuthRegistry, withInstanceKeys };
