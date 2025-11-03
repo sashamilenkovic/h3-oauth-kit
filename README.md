@@ -42,6 +42,8 @@ For the vast majority of H3/Nuxt applications, cookie-based storage is the ideal
 
 - 🔐 OAuth 2.0 Authorization Code flow support
 - 🤖 **NEW:** Client Credentials flow for machine-to-machine auth
+- 🔍 **NEW:** Token Introspection (RFC 7662) - validate token status
+- 📱 **NEW:** Device Authorization Flow (RFC 8628) - for CLI tools & IoT
 - 🍪 Secure HTTP-only cookie storage (AES-256 encrypted refresh tokens)
 - 🔁 Automatic token refresh on protected routes
 - 🧠 State validation & metadata preservation
@@ -49,6 +51,74 @@ For the vast majority of H3/Nuxt applications, cookie-based storage is the ideal
 - 🎨 Extensible type system for custom OAuth providers
 - 🏢 Multi-tenant / multi-instance support
 - ⚡ In-memory token caching for client credentials
+- 🌲 **Tree-shakable** - import only what you need
+
+---
+
+## Tree-Shakable Imports
+
+**v1.1.0+** introduces tree-shakable subpath exports for optimal bundle size.
+
+### Why Tree-Shaking Matters
+
+Each optional feature (introspection, device flow) adds ~2-3KB to your bundle. With subpath exports, you only include what you use:
+
+```typescript
+// ❌ Imports everything (even if you don't use introspection/device flow)
+import { handleOAuthLogin, introspectToken } from '@milencode/h3-oauth-kit';
+
+// ✅ Tree-shakable: only imports introspection (~2KB)
+import { introspectToken } from '@milencode/h3-oauth-kit/introspection';
+
+// ✅ Tree-shakable: only imports device flow (~3KB)
+import { initiateDeviceFlow } from '@milencode/h3-oauth-kit/device-flow';
+```
+
+### Available Subpaths
+
+| Subpath | What it includes | When to use |
+|---------|------------------|-------------|
+| `@milencode/h3-oauth-kit` | Core OAuth (login, callback, refresh, protected routes) | **Always** - this is the main package |
+| `@milencode/h3-oauth-kit/introspection` | Token introspection (RFC 7662) | When you need to validate tokens with the provider |
+| `@milencode/h3-oauth-kit/device-flow` | Device authorization (RFC 8628) | For CLI tools, TV apps, IoT devices |
+
+### Example: Keeping Your Bundle Lean
+
+```typescript
+// server/routes/auth/login.post.ts
+import { handleOAuthLogin } from '@milencode/h3-oauth-kit';
+
+export default defineEventHandler((event) => 
+  handleOAuthLogin('azure', {}, event)
+);
+```
+
+```typescript
+// server/routes/admin/validate-token.ts
+// Only imported in this route - not included in other routes' bundles
+import { introspectToken } from '@milencode/h3-oauth-kit/introspection';
+
+export default defineEventHandler(async (event) => {
+  const token = getHeader(event, 'authorization')?.split(' ')[1];
+  const isValid = await introspectToken('azure', token);
+  return { valid: isValid };
+});
+```
+
+```typescript
+// cli-tool.ts - No web dependencies needed
+import { authenticateDevice } from '@milencode/h3-oauth-kit/device-flow';
+
+const tokens = await authenticateDevice('github', {
+  scopes: ['repo', 'user'],
+  onStart: (auth) => {
+    console.log(`Visit: ${auth.verification_uri}`);
+    console.log(`Code: ${auth.user_code}`);
+  },
+});
+```
+
+**Result:** Your H3 API routes stay lean - introspection code only loads when that route is called!
 
 ---
 
@@ -697,6 +767,291 @@ Tokens are automatically refreshed when they expire (with a 60-second buffer to 
 | ✅ Scheduled jobs/cron tasks | ✅ Accessing user-specific data |
 | ✅ No user context needed | ✅ OAuth requires user consent |
 | ✅ M2M (machine-to-machine) auth | ✅ User session management |
+
+---
+
+### `introspectToken(provider, token, options?)` 🌲
+
+**NEW!** Validates a token with the OAuth provider using Token Introspection (RFC 7662).
+
+**Tree-shakable:** Import from `@milencode/h3-oauth-kit/introspection`
+
+Token introspection allows you to check if an access token or refresh token is still active, hasn't been revoked, and retrieve metadata about the token.
+
+#### Use Cases:
+- **Security-critical applications**: Verify tokens haven't been revoked
+- **Token validation**: Check token status before making API calls
+- **Audit logging**: Get token metadata for compliance
+- **Token debugging**: Inspect token details during development
+
+#### Basic Usage:
+
+```typescript
+import { introspectToken } from '@milencode/h3-oauth-kit/introspection';
+
+const result = await introspectToken('azure', 'access_token_here');
+
+if (result.active) {
+  console.log('Token is valid!');
+  console.log('Expires at:', new Date(result.exp! * 1000));
+  console.log('Scopes:', result.scope);
+} else {
+  console.log('Token is invalid or revoked');
+}
+```
+
+#### In a Protected Route:
+
+```typescript
+import { defineProtectedRoute } from '@milencode/h3-oauth-kit';
+import { introspectToken } from '@milencode/h3-oauth-kit/introspection';
+
+export default defineProtectedRoute(['azure'], async (event) => {
+  const token = event.context.h3OAuthKit.azure.access_token;
+
+  // Double-check token is still active (e.g., not revoked by admin)
+  const introspection = await introspectToken('azure', token);
+
+  if (!introspection.active) {
+    throw createError({
+      statusCode: 401,
+      message: 'Token has been revoked',
+    });
+  }
+
+  // Proceed with API call...
+  return { status: 'authorized', scopes: introspection.scope };
+});
+```
+
+#### Options:
+
+```typescript
+interface IntrospectionOptions {
+  /** Instance key for multi-tenant configurations */
+  instanceKey?: string;
+  /** Hint about the type of token being introspected */
+  tokenTypeHint?: 'access_token' | 'refresh_token';
+}
+
+// With type hint (optimization for provider)
+const result = await introspectToken('clio', refreshToken, {
+  tokenTypeHint: 'refresh_token',
+});
+
+// Multi-tenant
+const result = await introspectToken('azure', token, {
+  instanceKey: 'tenant-a',
+});
+```
+
+#### Response Format (RFC 7662):
+
+```typescript
+interface TokenIntrospectionResponse {
+  /** REQUIRED - Boolean indicator of whether or not the token is currently active */
+  active: boolean;
+  /** OAuth 2.0 scope values for this token */
+  scope?: string;
+  /** Client identifier for the OAuth 2.0 client that requested this token */
+  client_id?: string;
+  /** Human-readable identifier for the resource owner */
+  username?: string;
+  /** Type of the token (e.g., "Bearer") */
+  token_type?: string;
+  /** Timestamp when token expires (seconds since epoch) */
+  exp?: number;
+  /** Timestamp when token was issued (seconds since epoch) */
+  iat?: number;
+  /** Subject of the token */
+  sub?: string;
+  /** Intended audience */
+  aud?: string | string[];
+  // ... additional provider-specific fields
+}
+```
+
+#### Helper Function: `isTokenActive`
+
+```typescript
+import { isTokenActive } from '@milencode/h3-oauth-kit/introspection';
+
+// Simplified check - just returns true/false
+const isValid = await isTokenActive('azure', accessToken);
+if (isValid) {
+  // Token is good to use
+}
+```
+
+#### Important Notes:
+
+- Not all OAuth providers support introspection (requires RFC 7662 support)
+- Provider must have `introspectionEndpoint` configured:
+  ```typescript
+  registerOAuthProvider('azure', {
+    // ... other config
+    introspectionEndpoint: 'https://provider.com/oauth2/v2.0/introspect',
+  });
+  ```
+
+---
+
+### Device Authorization Flow 🌲
+
+**NEW!** Authenticate devices without a web browser using Device Authorization Flow (RFC 8628).
+
+**Tree-shakable:** Import from `@milencode/h3-oauth-kit/device-flow`
+
+The Device Authorization Flow is designed for devices that lack a web browser or have limited input capabilities (TVs, CLI tools, IoT devices, etc.).
+
+#### How it Works:
+
+1. Device calls `initiateDeviceFlow()` → receives `user_code` and `verification_uri`
+2. Device displays these to the user
+3. User opens the URL on another device (phone/computer) and enters the code
+4. Device polls for token using `pollForDeviceToken()`
+
+#### Use Cases:
+
+- **CLI tools**: Authenticate users from terminal
+- **Smart TVs**: Login flow for streaming apps  
+- **IoT devices**: Devices without browsers
+- **CI/CD pipelines**: Authenticate build processes
+
+---
+
+#### `initiateDeviceFlow(provider, options?)`
+
+Starts the device authorization flow.
+
+```typescript
+import { initiateDeviceFlow, pollForDeviceToken } from '@milencode/h3-oauth-kit/device-flow';
+
+const deviceAuth = await initiateDeviceFlow('azure', {
+  scopes: ['User.Read', 'Mail.Send'],
+});
+
+console.log('Please visit:', deviceAuth.verification_uri);
+console.log('And enter code:', deviceAuth.user_code);
+```
+
+**Response:**
+
+```typescript
+interface DeviceAuthorizationResponse {
+  /** The device verification code */
+  device_code: string;
+  /** The end-user verification code (show to user) */
+  user_code: string;
+  /** The verification URL on the authorization server */
+  verification_uri: string;
+  /** Optional: URL that includes the user_code for easier UX */
+  verification_uri_complete?: string;
+  /** Lifetime in seconds of the codes */
+  expires_in: number;
+  /** Minimum polling interval in seconds */
+  interval?: number;
+}
+```
+
+---
+
+#### `pollForDeviceToken(provider, deviceCode, options?)`
+
+Waits for the user to authorize the device and returns tokens.
+
+```typescript
+// After showing the user code
+const tokens = await pollForDeviceToken('azure', deviceAuth.device_code, {
+  maxWaitTime: 300, // Wait up to 5 minutes
+  pollInterval: 5,  // Poll every 5 seconds
+  onPoll: (attempt, secondsElapsed) => {
+    console.log(`Waiting for authorization... (${secondsElapsed}s elapsed)`);
+  },
+});
+
+console.log('Success! Access token:', tokens.access_token);
+```
+
+**Options:**
+
+```typescript
+interface DeviceTokenPollOptions {
+  /** Maximum time to wait in seconds (default: 300 = 5 minutes) */
+  maxWaitTime?: number;
+  /** Custom polling interval in seconds */
+  pollInterval?: number;
+  /** Instance key for multi-tenant configurations */
+  instanceKey?: string;
+  /** Callback invoked on each poll attempt */
+  onPoll?: (attempt: number, secondsElapsed: number) => void | Promise<void>;
+}
+```
+
+**Error Handling:**
+
+- Throws `"User denied authorization"` if user denies access
+- Throws `"Device code expired"` if codes expire before authorization
+- Throws `"timed out after N seconds"` if maxWaitTime is reached
+- Automatically handles `slow_down` errors by increasing poll interval
+
+---
+
+#### `authenticateDevice(provider, options?)`
+
+Convenience function that combines `initiateDeviceFlow` and `pollForDeviceToken`.
+
+**Perfect for CLI tools:**
+
+```typescript
+import { authenticateDevice } from '@milencode/h3-oauth-kit/device-flow';
+
+const tokens = await authenticateDevice('github', {
+  scopes: ['repo', 'user'],
+  onStart: (deviceAuth) => {
+    console.log('Visit:', deviceAuth.verification_uri);
+    console.log('Code:', deviceAuth.user_code);
+  },
+  onPoll: (attempt, seconds) => {
+    console.log(`Waiting... (${seconds}s)`);
+  },
+});
+
+console.log('Authenticated!', tokens.access_token);
+```
+
+#### QR Code Example:
+
+```typescript
+import QRCode from 'qrcode';
+import { authenticateDevice } from '@milencode/h3-oauth-kit/device-flow';
+
+const tokens = await authenticateDevice('azure', {
+  onStart: async (auth) => {
+    // Generate QR code for mobile scanning
+    const qr = await QRCode.toString(
+      auth.verification_uri_complete || auth.verification_uri,
+      { type: 'terminal' }
+    );
+    
+    console.log(qr);
+    console.log('\nOr manually visit:', auth.verification_uri);
+    console.log('And enter code:', auth.user_code);
+  },
+});
+```
+
+#### Configuration:
+
+Provider must have `deviceAuthorizationEndpoint` configured:
+
+```typescript
+registerOAuthProvider('azure', {
+  // ... other config
+  deviceAuthorizationEndpoint: 'https://login.microsoftonline.com/common/oauth2/v2.0/devicecode',
+  tokenEndpoint: 'https://login.microsoftonline.com/common/oauth2/v2.0/token',
+});
+```
 
 ---
 

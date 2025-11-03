@@ -7,6 +7,14 @@
     ".": {
       "import": "./dist/index.mjs",
       "types": "./dist/index.d.ts"
+    },
+    "./introspection": {
+      "import": "./dist/introspection.mjs",
+      "types": "./dist/introspection.d.ts"
+    },
+    "./device-flow": {
+      "import": "./dist/deviceFlow.mjs",
+      "types": "./dist/deviceFlow.d.ts"
     }
   },
   "main": "./dist/index.mjs",

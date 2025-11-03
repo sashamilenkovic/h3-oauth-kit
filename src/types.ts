@@ -54,6 +54,10 @@ export interface BaseOAuthProviderConfig {
   usePKCE?: boolean;
   userInfoEndpoint?: string;
   revokeEndpoint?: string;
+  /** RFC 7662 Token Introspection endpoint */
+  introspectionEndpoint?: string;
+  /** RFC 8628 Device Authorization endpoint */
+  deviceAuthorizationEndpoint?: string;
   hooks?: OAuthProviderHooks;
 }
 
@@ -709,4 +713,156 @@ export interface ClientCredentialsOptions {
   forceRefresh?: boolean;
   /** Instance key for multi-tenant configurations */
   instanceKey?: string;
+}
+
+// ============================================================
+// Token Introspection Types (RFC 7662)
+// ============================================================
+
+/**
+ * Token introspection request parameters
+ * Used to check if a token is valid and active
+ */
+export interface TokenIntrospectionRequest {
+  token: string;
+  token_type_hint?: 'access_token' | 'refresh_token';
+  client_id?: string;
+  client_secret?: string;
+}
+
+/**
+ * Token introspection response (RFC 7662 Section 2.2)
+ * Contains information about the token's validity and metadata
+ */
+export interface TokenIntrospectionResponse {
+  /** REQUIRED - Boolean indicator of whether or not the token is currently active */
+  active: boolean;
+  /** OAuth 2.0 scope values for this token */
+  scope?: string;
+  /** Client identifier for the OAuth 2.0 client that requested this token */
+  client_id?: string;
+  /** Human-readable identifier for the resource owner who authorized this token */
+  username?: string;
+  /** Type of the token (e.g., "Bearer") */
+  token_type?: string;
+  /** Timestamp indicating when the token will expire (seconds since epoch) */
+  exp?: number;
+  /** Timestamp indicating when the token was issued (seconds since epoch) */
+  iat?: number;
+  /** Timestamp before which the token MUST NOT be accepted (seconds since epoch) */
+  nbf?: number;
+  /** Subject of the token - usually a machine-readable identifier */
+  sub?: string;
+  /** Intended audience of the token */
+  aud?: string | string[];
+  /** Issuer of the token */
+  iss?: string;
+  /** JWT ID - unique identifier for the token */
+  jti?: string;
+  /** Additional provider-specific fields */
+  [key: string]: unknown;
+}
+
+/**
+ * Options for token introspection
+ */
+export interface IntrospectionOptions {
+  /** Instance key for multi-tenant configurations */
+  instanceKey?: string;
+  /** Hint about the type of token being introspected */
+  tokenTypeHint?: 'access_token' | 'refresh_token';
+}
+
+// ============================================================
+// Device Authorization Flow Types (RFC 8628)
+// ============================================================
+
+/**
+ * Device authorization request parameters
+ * Initiates the device flow
+ */
+export interface DeviceAuthorizationRequest {
+  client_id: string;
+  scope?: string;
+}
+
+/**
+ * Device authorization response (RFC 8628 Section 3.2)
+ * Contains codes and URL for user to authorize the device
+ */
+export interface DeviceAuthorizationResponse {
+  /** The device verification code */
+  device_code: string;
+  /** The end-user verification code (shown to user) */
+  user_code: string;
+  /** The end-user verification URI on the authorization server */
+  verification_uri: string;
+  /** Optional: A verification URI that includes the user_code for easier UX */
+  verification_uri_complete?: string;
+  /** The lifetime in seconds of the device_code and user_code */
+  expires_in: number;
+  /** The minimum amount of time in seconds the client should wait between polling requests */
+  interval?: number;
+}
+
+/**
+ * Device token request parameters
+ * Used to poll for token after user authorization
+ */
+export interface DeviceTokenRequest {
+  grant_type: 'urn:ietf:params:oauth:grant-type:device_code';
+  device_code: string;
+  client_id: string;
+}
+
+/**
+ * Device token response
+ * Received after successful authorization
+ */
+export interface DeviceTokenResponse {
+  access_token: string;
+  token_type: 'Bearer' | 'bearer';
+  expires_in: number;
+  refresh_token?: string;
+  scope?: string;
+  /** Additional provider-specific fields */
+  [key: string]: unknown;
+}
+
+/**
+ * Device flow error response (RFC 8628 Section 3.5)
+ */
+export interface DeviceFlowError {
+  error:
+    | 'authorization_pending' // User hasn't authorized yet
+    | 'slow_down' // Polling too frequently
+    | 'access_denied' // User denied authorization
+    | 'expired_token' // Device code expired
+    | string; // Other OAuth errors
+  error_description?: string;
+  error_uri?: string;
+}
+
+/**
+ * Options for initiating device flow
+ */
+export interface DeviceFlowOptions {
+  /** OAuth scopes to request */
+  scopes?: string[];
+  /** Instance key for multi-tenant configurations */
+  instanceKey?: string;
+}
+
+/**
+ * Options for polling device token
+ */
+export interface DeviceTokenPollOptions {
+  /** Maximum time to wait in seconds (default: 300 = 5 minutes) */
+  maxWaitTime?: number;
+  /** Custom polling interval in seconds (overrides server's interval) */
+  pollInterval?: number;
+  /** Instance key for multi-tenant configurations */
+  instanceKey?: string;
+  /** Callback invoked on each poll attempt */
+  onPoll?: (attempt: number, secondsElapsed: number) => void | Promise<void>;
 }
