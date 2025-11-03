@@ -1,3 +1,10 @@
+# [1.1.0](https://github.com/sashamilenkovic/h3-oauth-kit/compare/v1.0.0...v1.1.0) (2025-11-03)
+
+
+### Features
+
+* add tree-shakable token introspection and device flow ([c8bde5f](https://github.com/sashamilenkovic/h3-oauth-kit/commit/c8bde5f7fb5af94f87fe3f2492177f5488a69e87))
+
 # [1.0.0](https://github.com/sashamilenkovic/h3-oauth-kit/compare/v0.13.1...v1.0.0) (2025-11-03)
 
 
