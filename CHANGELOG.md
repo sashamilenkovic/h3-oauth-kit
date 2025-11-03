@@ -1,3 +1,10 @@
+## [1.1.1](https://github.com/sashamilenkovic/h3-oauth-kit/compare/v1.1.0...v1.1.1) (2025-11-03)
+
+
+### Bug Fixes
+
+* use correct coverage script in CI workflow ([b42e707](https://github.com/sashamilenkovic/h3-oauth-kit/commit/b42e70756105d43b1ba76ad4793463b371dc1a56))
+
 # [1.1.0](https://github.com/sashamilenkovic/h3-oauth-kit/compare/v1.0.0...v1.1.0) (2025-11-03)
 
 
