@@ -681,26 +681,25 @@ export function defineProtectedRoute<
           }
         }
 
-        // Get provider config early so it's available throughout
-        const config = instanceKey
-          ? getOAuthProviderConfig(provider, instanceKey)
-          : getOAuthProviderConfig(provider);
-
-        let providerKey = getProviderKey(provider, instanceKey);
-        let result = await oAuthTokensAreValid(event, provider, instanceKey);
-
-        // If no result and this is a string provider, try auto-discovery
-        if (!result && !isScoped) {
+        // For string providers without explicit instanceKey, try auto-discovery first
+        // This allows instance-scoped cookies to be found before we try to get the config
+        if (!isScoped && !instanceKey) {
           const discoveredInstanceKey = discoverProviderInstance(
             event,
             provider,
           );
           if (discoveredInstanceKey) {
             instanceKey = discoveredInstanceKey;
-            providerKey = getProviderKey(provider, instanceKey);
-            result = await oAuthTokensAreValid(event, provider, instanceKey);
           }
         }
+
+        // Get provider config - now instanceKey may have been discovered
+        const config = instanceKey
+          ? getOAuthProviderConfig(provider, instanceKey)
+          : getOAuthProviderConfig(provider);
+
+        let providerKey = getProviderKey(provider, instanceKey);
+        let result = await oAuthTokensAreValid(event, provider, instanceKey);
 
         if (!result) {
           const error = createError({

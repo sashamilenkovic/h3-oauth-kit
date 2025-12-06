@@ -658,7 +658,7 @@ function discoverProviderInstance(event, provider) {
   if (getCookie(event, globalKey)) {
     return void 0;
   }
-  const cookies = event.node.req.headers.cookie;
+  const cookies = event.node?.req?.headers?.cookie;
   if (!cookies) return void 0;
   const cookiePattern = new RegExp(`${provider}:([^_]+)_refresh_token=`);
   const matches = cookies.match(cookiePattern);
@@ -934,20 +934,18 @@ function defineProtectedRoute(providers, handler, options) {
             instanceKey = await def.instanceResolver(event);
           }
         }
-        const config = instanceKey ? getOAuthProviderConfig(provider, instanceKey) : getOAuthProviderConfig(provider);
-        let providerKey = getProviderKey(provider, instanceKey);
-        let result = await oAuthTokensAreValid(event, provider, instanceKey);
-        if (!result && !isScoped) {
+        if (!isScoped && !instanceKey) {
           const discoveredInstanceKey = discoverProviderInstance(
             event,
             provider
           );
           if (discoveredInstanceKey) {
             instanceKey = discoveredInstanceKey;
-            providerKey = getProviderKey(provider, instanceKey);
-            result = await oAuthTokensAreValid(event, provider, instanceKey);
           }
         }
+        const config = instanceKey ? getOAuthProviderConfig(provider, instanceKey) : getOAuthProviderConfig(provider);
+        let providerKey = getProviderKey(provider, instanceKey);
+        let result = await oAuthTokensAreValid(event, provider, instanceKey);
         if (!result) {
           const error = createError({
             statusCode: 401,

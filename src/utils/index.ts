@@ -1248,7 +1248,7 @@ export function discoverProviderInstance(
   }
 
   // Scan for scoped instances by looking at all cookies
-  const cookies = event.node.req.headers.cookie;
+  const cookies = event.node?.req?.headers?.cookie;
   if (!cookies) return undefined;
 
   const cookiePattern = new RegExp(`${provider}:([^_]+)_refresh_token=`);
