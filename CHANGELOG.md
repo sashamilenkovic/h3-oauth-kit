@@ -1,3 +1,10 @@
+## [1.2.1](https://github.com/sashamilenkovic/h3-oauth-kit/compare/v1.2.0...v1.2.1) (2025-12-06)
+
+
+### Bug Fixes
+
+* run instance discovery before config lookup in defineProtectedRoute ([d68d101](https://github.com/sashamilenkovic/h3-oauth-kit/commit/d68d1017273f768883f5216fe41e403ca7ae263e))
+
 # [1.2.0](https://github.com/sashamilenkovic/h3-oauth-kit/compare/v1.1.3...v1.2.0) (2025-11-03)
 
 
