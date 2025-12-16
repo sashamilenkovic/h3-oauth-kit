@@ -1,3 +1,10 @@
+## [1.2.2](https://github.com/sashamilenkovic/h3-oauth-kit/compare/v1.2.1...v1.2.2) (2025-12-16)
+
+
+### Bug Fixes
+
+* enable tokoen refresh when access_token cookie is missing ([5dedb72](https://github.com/sashamilenkovic/h3-oauth-kit/commit/5dedb7201071a5626106491f45ebe721cf0e3ee7))
+
 ## [1.2.1](https://github.com/sashamilenkovic/h3-oauth-kit/compare/v1.2.0...v1.2.1) (2025-12-06)
 
 
