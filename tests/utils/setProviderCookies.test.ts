@@ -486,4 +486,40 @@ describe('setProviderCookies', () => {
     expect(cookieNames).not.toContain('azure_refresh_token');
     expect(cookieNames).not.toContain('azure_access_token_expires_at');
   });
+
+  it('sets access_token and expires_at cookies with 30-day maxAge to enable token refresh', async () => {
+    const event = createMockEvent();
+    const tokens = {
+      access_token: 'Bearer test-token',
+      refresh_token: 'test-refresh',
+      token_type: 'bearer' as const,
+      expires_in: 3600, // 1 hour token lifetime
+    };
+
+    await setProviderCookies(event, tokens, 'clio');
+
+    const cookieCalls = (setCookie as unknown as Mock).mock.calls;
+    const thirtyDaysInSeconds = 30 * 24 * 60 * 60;
+
+    // Find the access_token cookie and verify it has 30-day maxAge
+    const accessTokenCookie = cookieCalls.find(
+      ([, name]) => name === 'clio_access_token',
+    );
+    expect(accessTokenCookie).toBeDefined();
+    expect(accessTokenCookie?.[3]?.maxAge).toBe(thirtyDaysInSeconds);
+
+    // Find the expires_at cookie and verify it also has 30-day maxAge
+    const expiresAtCookie = cookieCalls.find(
+      ([, name]) => name === 'clio_access_token_expires_at',
+    );
+    expect(expiresAtCookie).toBeDefined();
+    expect(expiresAtCookie?.[3]?.maxAge).toBe(thirtyDaysInSeconds);
+
+    // The refresh_token cookie should also have 30-day maxAge (default)
+    const refreshTokenCookie = cookieCalls.find(
+      ([, name]) => name === 'clio_refresh_token',
+    );
+    expect(refreshTokenCookie).toBeDefined();
+    expect(refreshTokenCookie?.[3]?.maxAge).toBe(thirtyDaysInSeconds);
+  });
 });

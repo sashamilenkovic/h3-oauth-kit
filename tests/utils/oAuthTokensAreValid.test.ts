@@ -169,11 +169,37 @@ describe('oAuthTokensAreValid', () => {
     },
   );
 
-  it('returns false if required cookies are missing', async () => {
+  it('returns false if both access_token and refresh_token are missing', async () => {
     mockedGetCookie.mockReturnValue(undefined);
     const event = createMockEvent();
     const result = await oAuthTokensAreValid(event, 'clio');
     expect(result).toBe(false);
+  });
+
+  it('returns expired status when access_token is missing but refresh_token exists (enables refresh flow)', async () => {
+    // This is a critical test: when access_token cookie is missing (e.g., expired/deleted)
+    // but refresh_token exists, we should return 'expired' status to trigger token refresh
+    // instead of returning false which would cause a 401 error.
+    const cookies = await withEncryptedRefreshToken('clio', {
+      // Note: clio_access_token is intentionally missing
+      clio_refresh_token: 'valid-refresh-token',
+      // expires_at is also missing since access_token doesn't exist
+    });
+
+    mockedGetCookie.mockImplementation(
+      (_, key) => cookies[key as keyof typeof cookies],
+    );
+
+    const event = createMockEvent();
+    const result = await oAuthTokensAreValid(event, 'clio');
+
+    // Should NOT return false - should return expired status to enable refresh
+    expect(result).not.toBe(false);
+    if (result === false) throw new Error('Result should not be false');
+
+    expect(result.status).toBe('expired');
+    expect(result.tokens.access_token).toBe(''); // Empty access token
+    expect(result.tokens.refresh_token).toBe('valid-refresh-token'); // Decrypted refresh token
   });
 
   it('returns expired status if access token is expired', async () => {

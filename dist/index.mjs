@@ -231,16 +231,20 @@ async function setProviderCookies(event, tokens, provider, options, instanceKey)
   };
   const expiresIn = tokens.expires_in;
   const cleanedAccessToken = tokens.access_token.startsWith("Bearer ") ? tokens.access_token.slice(7) : tokens.access_token;
+  const accessTokenCookieMaxAge = 30 * 24 * 60 * 60;
   setCookie(event, `${providerKey}_access_token`, cleanedAccessToken, {
     ...base,
-    maxAge: expiresIn
+    maxAge: accessTokenCookieMaxAge
   });
   const expiry = Math.floor(Date.now() / 1e3) + expiresIn;
   setCookie(
     event,
     `${providerKey}_access_token_expires_at`,
     String(expiry),
-    base
+    {
+      ...base,
+      maxAge: accessTokenCookieMaxAge
+    }
   );
   const config = instanceKey ? getOAuthProviderConfig(provider, instanceKey) : getOAuthProviderConfig(provider);
   if (tokens.refresh_token) {
@@ -489,22 +493,35 @@ async function oAuthTokensAreValid(event, provider, instanceKey) {
     `${providerKey}_access_token_expires_at`
   );
   const hasRefreshToken = !!refresh_token;
-  if (!access_token) {
+  if (!access_token && !hasRefreshToken) {
     return false;
+  }
+  const config = instanceKey ? getOAuthProviderConfig(provider, instanceKey) : getOAuthProviderConfig(provider);
+  const now = Math.floor(Date.now() / 1e3);
+  let decryptedRefreshToken;
+  if (hasRefreshToken) {
+    decryptedRefreshToken = await config.decrypt(refresh_token);
+  }
+  if (!access_token && hasRefreshToken) {
+    const base2 = {
+      access_token: "",
+      // Empty - will be replaced after refresh
+      refresh_token: decryptedRefreshToken,
+      expires_in: now
+      // Set to now to indicate expired
+    };
+    return {
+      tokens: base2,
+      status: "expired"
+    };
   }
   if (!access_token_expires_at) {
     return false;
   }
-  const config = instanceKey ? getOAuthProviderConfig(provider, instanceKey) : getOAuthProviderConfig(provider);
   const expires_in = parseInt(access_token_expires_at, 10);
-  const now = Math.floor(Date.now() / 1e3);
   const isAccessTokenExpired = now >= expires_in;
   if (isAccessTokenExpired && !hasRefreshToken) {
     return false;
-  }
-  let decryptedRefreshToken;
-  if (hasRefreshToken) {
-    decryptedRefreshToken = await config.decrypt(refresh_token);
   }
   const base = {
     access_token,

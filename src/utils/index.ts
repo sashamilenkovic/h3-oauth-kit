@@ -96,9 +96,14 @@ export async function setProviderCookies<P extends OAuthProvider>(
     ? tokens.access_token.slice(7)
     : tokens.access_token;
 
+  // Use a long maxAge for the access_token cookie (30 days) to ensure it persists
+  // even after the token expires. Token validity is checked via expires_at timestamp,
+  // not cookie existence. This allows the refresh flow to trigger properly.
+  const accessTokenCookieMaxAge = 30 * 24 * 60 * 60; // 30 days
+
   setCookie(event, `${providerKey}_access_token`, cleanedAccessToken, {
     ...base,
-    maxAge: expiresIn,
+    maxAge: accessTokenCookieMaxAge,
   });
 
   const expiry = Math.floor(Date.now() / 1000) + expiresIn;
@@ -107,7 +112,10 @@ export async function setProviderCookies<P extends OAuthProvider>(
     event,
     `${providerKey}_access_token_expires_at`,
     String(expiry),
-    base,
+    {
+      ...base,
+      maxAge: accessTokenCookieMaxAge,
+    },
   );
 
   const config = instanceKey
@@ -723,13 +731,8 @@ export async function oAuthTokensAreValid<P extends OAuthProvider>(
   // Check if we have a refresh token
   const hasRefreshToken = !!refresh_token;
 
-  // If no access token at all, fail
-  if (!access_token) {
-    return false;
-  }
-
-  // If no expiry info, we can't validate - fail safe
-  if (!access_token_expires_at) {
+  // If no refresh token and no access token, we can't do anything
+  if (!access_token && !hasRefreshToken) {
     return false;
   }
 
@@ -737,19 +740,40 @@ export async function oAuthTokensAreValid<P extends OAuthProvider>(
     ? getOAuthProviderConfig(provider, instanceKey)
     : getOAuthProviderConfig(provider);
 
-  const expires_in = parseInt(access_token_expires_at, 10);
   const now = Math.floor(Date.now() / 1000);
-  const isAccessTokenExpired = now >= expires_in;
-
-  // If access token is expired and we have no refresh token, fail
-  if (isAccessTokenExpired && !hasRefreshToken) {
-    return false;
-  }
 
   // If we have a refresh token, decrypt it
   let decryptedRefreshToken: string | undefined;
   if (hasRefreshToken) {
     decryptedRefreshToken = await config.decrypt(refresh_token);
+  }
+
+  // If access_token is missing but we have refresh_token, trigger refresh
+  // by returning 'expired' status. The refresh flow will get new tokens.
+  if (!access_token && hasRefreshToken) {
+    const base = {
+      access_token: '', // Empty - will be replaced after refresh
+      refresh_token: decryptedRefreshToken,
+      expires_in: now, // Set to now to indicate expired
+    };
+
+    return {
+      tokens: base as OAuthProviderTokenMap[P],
+      status: 'expired',
+    };
+  }
+
+  // If no expiry info but we have access_token, we can't validate - fail safe
+  if (!access_token_expires_at) {
+    return false;
+  }
+
+  const expires_in = parseInt(access_token_expires_at, 10);
+  const isAccessTokenExpired = now >= expires_in;
+
+  // If access token is expired and we have no refresh token, fail
+  if (isAccessTokenExpired && !hasRefreshToken) {
+    return false;
   }
 
   const base = {
